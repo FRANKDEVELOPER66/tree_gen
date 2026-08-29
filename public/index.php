@@ -45,6 +45,9 @@ $router->post('/api/filiaciones/eliminar', [FiliacionesController::class, 'elimi
 
 $router->get('/api/personas/hijos', [PersonasController::class, 'hijosAPI']);
 $router->get('/api/personas/parejas', [PersonasController::class, 'parejasAPI']);
+$router->get('/api/personas/uniones', [PersonasController::class, 'unionesAPI']);
+$router->get('/api/personas/hermanos', [PersonasController::class, 'hermanosAPI']);
+$router->get('/api/personas/progenitores', [PersonasController::class, 'progenitoresAPI']);
 
 // Comprueba y valida las rutas, que existan y les asigna las funciones del Controlador
 $router->comprobarRutas();

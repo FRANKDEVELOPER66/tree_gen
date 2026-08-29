@@ -85,16 +85,37 @@ class Personas extends ActiveRecord
     }
 
     /** Hermanos: personas que comparten al menos un progenitor */
+    /**
+     * Hermanos/as: cualquiera que comparta al menos un progenitor con esta
+     * persona, marcando si son hermanos "completo" (comparten TODOS los
+     * mismos progenitores) o "medio" (comparten solo algunos).
+     */
     public static function hermanos(int $personaId): array
     {
-        return self::fetchArray(
-            "SELECT DISTINCT p.id, p.nombres, p.apellidos, p.foto_perfil
+        $totalPropios = count(self::progenitores($personaId));
+
+        $candidatos = self::fetchArray(
+            "SELECT p.id, p.nombres, p.apellidos, p.foto_perfil,
+                    COUNT(DISTINCT f2.progenitor_id) AS compartidos,
+                    (SELECT COUNT(*) FROM filiaciones fx WHERE fx.hijo_id = p.id) AS total_progenitores
              FROM filiaciones f1
              JOIN filiaciones f2 ON f1.progenitor_id = f2.progenitor_id AND f1.hijo_id <> f2.hijo_id
              JOIN personas p ON p.id = f2.hijo_id
-             WHERE f1.hijo_id = ?",
+             WHERE f1.hijo_id = ?
+             GROUP BY p.id, p.nombres, p.apellidos, p.foto_perfil",
             [$personaId]
         );
+
+        foreach ($candidatos as &$c) {
+            $compartidos = (int) $c['compartidos'];
+            $totalSuyos = (int) $c['total_progenitores'];
+            $c['tipo'] = ($compartidos === $totalPropios && $compartidos === $totalSuyos)
+                ? 'completo'
+                : 'medio';
+            unset($c['compartidos'], $c['total_progenitores']);
+        }
+
+        return $candidatos;
     }
 
     /** Hijos ya vinculados a esta persona como progenitora (para excluirlos de selectores) */
@@ -124,6 +145,32 @@ class Personas extends ActiveRecord
                     'apellidos' => $esA ? $u['b_apellidos'] : $u['a_apellidos'],
                 ];
             }
+        }
+        return $resultado;
+    }
+
+    /**
+     * Uniones de esta persona con el id de la union y los datos de la
+     * pareja incluidos (para el selector "Vincular hijo/a": a que union
+     * pertenece el hijo, y a quien mas vincular automaticamente).
+     */
+    public static function unionesResumen(int $personaId): array
+    {
+        $filas = self::uniones($personaId);
+        $resultado = [];
+        foreach ($filas as $u) {
+            $esA = (int) $u['persona_a_id'] === $personaId;
+            $parejaId = $esA ? $u['b_id'] : $u['a_id'];
+            $resultado[] = [
+                'union_id' => (int) $u['id'],
+                'tipo' => $u['tipo'],
+                'estado' => $u['estado'],
+                'pareja' => $parejaId ? [
+                    'id' => (int) $parejaId,
+                    'nombres' => $esA ? $u['b_nombres'] : $u['a_nombres'],
+                    'apellidos' => $esA ? $u['b_apellidos'] : $u['a_apellidos'],
+                ] : null,
+            ];
         }
         return $resultado;
     }

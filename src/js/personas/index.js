@@ -232,14 +232,43 @@ window.eliminarPersona = async (id) => {
 window.gestionarUnion = async (personaId) => {
     const todas = await obtenerTodas();
 
+    // Excluir a la propia persona, a sus progenitores y a sus hijos
+    // (no puede ser pareja de su padre/madre ni de su hijo/a)
+    const [rProgenitores, rHijos, rUniones] = await Promise.all([
+        fetch(`${BASE}/api/personas/progenitores?id=${personaId}`),
+        fetch(`${BASE}/api/personas/hijos?id=${personaId}`),
+        fetch(`${BASE}/api/personas/uniones?id=${personaId}`),
+    ]);
+    const dProgenitores = await rProgenitores.json();
+    const dHijos = await rHijos.json();
+    const dUniones = await rUniones.json();
+    const progenitoresIds = dProgenitores.codigo === 1 ? dProgenitores.datos.map((p) => p.id) : [];
+    const hijosIds = dHijos.codigo === 1 ? dHijos.datos.map((h) => h.id) : [];
+    const unionesExistentes = dUniones.codigo === 1 ? dUniones.datos : [];
+    const excluir = [personaId, ...progenitoresIds, ...hijosIds];
+
+    // Aviso (no bloqueo) si ya tiene una union activa -- una segunda union
+    // es valida (viudez, divorcio, segundas nupcias), pero DOS activas a
+    // la vez suele ser un error de carga, asi que lo señalamos.
+    const unionActivaExistente = unionesExistentes.find((u) => u.estado === 'activa');
+    const avisoActiva = unionActivaExistente
+        ? `<div style="background:rgba(232,184,75,.18);border:1px solid #c9a24b;border-radius:8px;
+              padding:.5rem .75rem;margin-bottom:.6rem;font-size:.78rem;color:#6b5a20;">
+              ⚠️ Ya tiene una unión <strong>activa</strong> registrada${unionActivaExistente.pareja ? ' con ' + unionActivaExistente.pareja.nombres + ' ' + unionActivaExistente.pareja.apellidos : ''}.
+              Si esta nueva unión también va a quedar como "Activa", asegurate de que sea correcto
+              (por ejemplo, no cargar dos matrimonios activos por error).
+           </div>`
+        : '';
+
     const { value: form, isConfirmed } = await Swal.fire({
         title: 'Registrar unión',
         html: `
             <div class="text-start small">
+                ${avisoActiva}
                 <label class="form-label">Pareja</label>
                 <select id="u-pareja" class="form-select form-select-sm mb-2">
                     <option value="">— Sin pareja registrada —</option>
-                    ${opcionesSelect(todas, personaId)}
+                    ${opcionesSelect(todas, excluir)}
                 </select>
                 <div class="row g-2 mb-2">
                     <div class="col-6">
@@ -300,15 +329,17 @@ window.gestionarHijo = async (progenitorId) => {
     const todas = await obtenerTodas();
 
     // Excluir a la propia persona, a los hijos ya vinculados, y a su(s) pareja(s)
-    // (alguien no puede ser hijo/a y pareja de la misma persona a la vez)
-    const [rHijos, rParejas] = await Promise.all([
+    const [rHijos, rParejas, rUniones] = await Promise.all([
         fetch(`${BASE}/api/personas/hijos?id=${progenitorId}`),
         fetch(`${BASE}/api/personas/parejas?id=${progenitorId}`),
+        fetch(`${BASE}/api/personas/uniones?id=${progenitorId}`),
     ]);
     const dHijos = await rHijos.json();
     const dParejas = await rParejas.json();
+    const dUniones = await rUniones.json();
     const yaVinculados = dHijos.codigo === 1 ? dHijos.datos.map((h) => h.id) : [];
     const parejas = dParejas.codigo === 1 ? dParejas.datos.map((p) => p.id) : [];
+    const uniones = dUniones.codigo === 1 ? dUniones.datos : [];
     const excluir = [progenitorId, ...yaVinculados, ...parejas];
 
     const disponibles = todas.filter((p) => !excluir.map(String).includes(String(p.id)));
@@ -323,14 +354,27 @@ window.gestionarHijo = async (progenitorId) => {
         return;
     }
 
+    const opcionesUnion = uniones.map((u, i) => {
+        const etiquetaPareja = u.pareja ? `${u.pareja.nombres} ${u.pareja.apellidos}` : 'sin pareja registrada';
+        return `<option value="${i}">${u.tipo === 'matrimonio' ? 'Matrimonio' : 'Unión'} con ${etiquetaPareja} (${u.estado})</option>`;
+    }).join('');
+
     const { value: form, isConfirmed } = await Swal.fire({
         title: 'Vincular hijo/a',
         html: `
             <div class="text-start small">
                 <label class="form-label">Hijo/a (debe existir ya como persona)</label>
                 <select id="h-hijo" class="form-select form-select-sm mb-2">
-                    ${opcionesSelect(todas, excluir)}
+                    ${opcionesSelect(disponibles, [])}
                 </select>
+                ${uniones.length ? `
+                <label class="form-label">Pertenece a esta unión</label>
+                <select id="h-union" class="form-select form-select-sm mb-2">
+                    ${opcionesUnion}
+                    <option value="">— Sin unión específica —</option>
+                </select>
+                <p class="text-muted small mb-2" id="h-aviso-pareja"></p>
+                ` : '<input type="hidden" id="h-union" value="">'}
                 <label class="form-label">Tipo de relación</label>
                 <select id="h-tipo" class="form-select form-select-sm mb-2">
                     <option value="biologico">Biológico/a</option>
@@ -343,6 +387,19 @@ window.gestionarHijo = async (progenitorId) => {
                     Si esta persona no existe todavía, cerrá esto y creala primero con "Nueva persona".
                 </p>
             </div>`,
+        didOpen: () => {
+            const selectUnion = document.getElementById('h-union');
+            const aviso = document.getElementById('h-aviso-pareja');
+            if (!selectUnion || !aviso || selectUnion.tagName !== 'SELECT') return;
+            const actualizarAviso = () => {
+                const u = uniones[selectUnion.value];
+                aviso.textContent = u && u.pareja
+                    ? `Se vinculará también como hijo/a de ${u.pareja.nombres} ${u.pareja.apellidos} automáticamente.`
+                    : '';
+            };
+            selectUnion.addEventListener('change', actualizarAviso);
+            actualizarAviso();
+        },
         showCancelButton: true,
         confirmButtonText: 'Vincular',
         confirmButtonColor: '#e8b84b',
@@ -358,14 +415,33 @@ window.gestionarHijo = async (progenitorId) => {
 
     if (!isConfirmed || !form) return;
 
-    const body = new FormData();
-    body.append('hijo_id', document.getElementById('h-hijo').value);
-    body.append('progenitor_id', progenitorId);
-    body.append('tipo_relacion', document.getElementById('h-tipo').value);
+    const hijoId = document.getElementById('h-hijo').value;
+    const tipoRelacion = document.getElementById('h-tipo').value;
+    const indiceUnion = document.getElementById('h-union').value;
+    const unionSeleccionada = indiceUnion !== '' ? uniones[indiceUnion] : null;
 
-    const r = await fetch(`${BASE}/api/filiaciones/guardar`, { method: 'POST', body });
-    const d = await r.json();
-    Toast.fire({ icon: d.codigo === 1 ? 'success' : 'error', title: d.mensaje });
+    const vincular = async (progenitorVinculo) => {
+        const body = new FormData();
+        body.append('hijo_id', hijoId);
+        body.append('progenitor_id', progenitorVinculo);
+        body.append('union_id', unionSeleccionada ? unionSeleccionada.union_id : '');
+        body.append('tipo_relacion', tipoRelacion);
+        const r = await fetch(`${BASE}/api/filiaciones/guardar`, { method: 'POST', body });
+        return r.json();
+    };
+
+    const resultadoPrincipal = await vincular(progenitorId);
+
+    let mensaje = resultadoPrincipal.mensaje;
+    if (resultadoPrincipal.codigo === 1 && unionSeleccionada && unionSeleccionada.pareja) {
+        const resultadoPareja = await vincular(unionSeleccionada.pareja.id);
+        if (resultadoPareja.codigo === 1) {
+            mensaje = 'Hijo/a vinculado/a con ambos progenitores';
+        }
+        // si la pareja ya lo tenia vinculado (duplicado), no es un error real -- se ignora en silencio
+    }
+
+    Toast.fire({ icon: resultadoPrincipal.codigo === 1 ? 'success' : 'error', title: mensaje });
 };
 
 // ── Fijar raíz del árbol ─────────────────────────────────────────────

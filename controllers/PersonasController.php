@@ -175,4 +175,25 @@ class PersonasController
         $id = (int) ($_GET['id'] ?? 0);
         responderJSON(1, '', Personas::parejas($id));
     }
+
+    /** API: progenitores de una persona (para excluirlos del selector "Agregar unión" — no puede ser pareja de su padre/madre) */
+    public static function progenitoresAPI()
+    {
+        $id = (int) ($_GET['id'] ?? 0);
+        responderJSON(1, '', Personas::progenitores($id));
+    }
+
+    /** API: hermanos/as de una persona, distinguiendo completos vs medios hermanos */
+    public static function hermanosAPI()
+    {
+        $id = (int) ($_GET['id'] ?? 0);
+        responderJSON(1, '', Personas::hermanos($id));
+    }
+
+    /** API: uniones de una persona con datos de pareja (para elegir a que union pertenece un hijo) */
+    public static function unionesAPI()
+    {
+        $id = (int) ($_GET['id'] ?? 0);
+        responderJSON(1, '', Personas::unionesResumen($id));
+    }
 }

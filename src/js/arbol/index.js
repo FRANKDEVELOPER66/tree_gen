@@ -1,3 +1,7 @@
+import Swal from 'sweetalert2';
+import { Dropdown } from 'bootstrap';
+
+
 const BASE = document.querySelector('[data-base]')?.dataset.base ?? '';
 
 const lienzo = document.getElementById('lienzo');
@@ -26,7 +30,38 @@ function iniciales(nombres, apellidos) {
     return (a + b).toUpperCase();
 }
 
-function retratoHTML(persona, { central = false, mini = false, etiqueta = null } = {}) {
+// ── Etiquetas de parentesco (Padre/Madre/Hijo/Hija/Esposo/Esposa...) ────────
+function rolProgenitor(persona) {
+    if (persona.genero === 'femenino') return 'Madre';
+    if (persona.genero === 'masculino') return 'Padre';
+    return 'Progenitor/a';
+}
+
+function rolHijo(persona) {
+    if (persona.genero === 'femenino') return 'Hija';
+    if (persona.genero === 'masculino') return 'Hijo';
+    return 'Hijo/a';
+}
+
+function rolPareja(persona, tipoUnion) {
+    if (tipoUnion === 'matrimonio') {
+        if (persona.genero === 'femenino') return 'Esposa';
+        if (persona.genero === 'masculino') return 'Esposo';
+        return 'Cónyuge';
+    }
+    return 'Pareja';
+}
+
+const ETIQUETAS_FILIACION = {
+    biologico: null,
+    adoptivo: 'Adoptivo/a',
+    padrastro: 'Hijastro/a',
+    madrastra: 'Hijastro/a',
+    tutor: 'Bajo tutela',
+};
+
+// ── Retrato (nodo persona), con marco en arco y ficha aparte ────────────────
+function retratoHTML(persona, { central = false, mini = false, rol = null, etiqueta = null } = {}) {
     const foto = urlFoto(persona.foto_perfil);
     const fallecido = persona.fecha_fallecimiento ? 'fallecido' : '';
     const claseMarco = mini ? 'retrato-marco retrato-chico' : 'retrato-marco';
@@ -44,23 +79,21 @@ function retratoHTML(persona, { central = false, mini = false, etiqueta = null }
 
     return `
         <div class="retrato-persona ${central ? 'central' : ''}" data-id="${persona.id}">
-            <div class="${claseMarco} ${fallecido}">${contenidoImg}</div>
+            <div class="marco-wrap">
+                <div class="${claseMarco} ${fallecido}">${contenidoImg}</div>
+                <button class="btn-ficha" data-ficha-id="${persona.id}" title="Ver ficha técnica" aria-label="Ver ficha técnica">
+                    <i class="bi bi-info-circle-fill"></i>
+                </button>
+            </div>
             <div class="retrato-nombre">${persona.nombres}<br>${persona.apellidos}</div>
+            ${rol ? `<div class="retrato-rol">${rol}</div>` : ''}
             <div class="retrato-fechas">${edadOFechas(persona)}</div>
             ${etiqueta ? `<div class="etiqueta-filiacion">${etiqueta}</div>` : ''}
         </div>`;
 }
 
-const ETIQUETAS_FILIACION = {
-    biologico: null,
-    adoptivo: 'Adoptivo/a',
-    padrastro: 'Hijastro/a',
-    madrastra: 'Hijastro/a',
-    tutor: 'Bajo tutela',
-};
-
 async function cargarNucleo(personaId, { agregarAPila = true } = {}) {
-    lienzo.innerHTML = '<div class="cargando">Recuperando el registro familiar…</div>';
+    lienzo.innerHTML = '<div class="cargando">Abriendo el registro familiar…</div>';
 
     const resp = await fetch(`${BASE}/api/arbol/nucleo?id=${personaId}`);
     const data = await resp.json();
@@ -73,7 +106,6 @@ async function cargarNucleo(personaId, { agregarAPila = true } = {}) {
     const { persona, nucleos, progenitores } = data.datos;
 
     if (agregarAPila) {
-        // Si ya estaba en la pila (navegacion hacia atras via miga), recorta desde ahi
         const posExistente = pila.findIndex((p) => p.id === persona.id);
         if (posExistente >= 0) {
             pila = pila.slice(0, posExistente + 1);
@@ -107,14 +139,12 @@ function pintarNucleo(persona, nucleos, progenitores) {
 
     let html = '';
 
-    // Progenitores (para subir en el arbol)
     if (progenitores && progenitores.length) {
         html += `<div class="fila-progenitores">`;
         html += progenitores.map((p) => retratoHTML(p, { mini: true })).join('');
         html += `</div>`;
     }
 
-    // Pareja central
     html += `<div class="pareja-central">`;
     html += retratoHTML(persona, { central: true });
     if (nucleoActivo && nucleoActivo.pareja) {
@@ -123,11 +153,10 @@ function pintarNucleo(persona, nucleos, progenitores) {
                 ∞
                 <span class="rango">${nucleoActivo.tipo === 'matrimonio' ? 'Matrimonio' : 'Unión'}${nucleoActivo.estado !== 'activa' ? ' · ' + nucleoActivo.estado : ''}</span>
             </div>`;
-        html += retratoHTML(nucleoActivo.pareja, { central: true });
+        html += retratoHTML(nucleoActivo.pareja, { central: true, rol: rolPareja(nucleoActivo.pareja, nucleoActivo.tipo) });
     }
     html += `</div>`;
 
-    // Pestañas si hay mas de una union
     if (nucleos.length > 1) {
         html += `<div class="pestanas-uniones">`;
         html += nucleos
@@ -141,12 +170,14 @@ function pintarNucleo(persona, nucleos, progenitores) {
         html += `</div>`;
     }
 
-    // Hijos
     if (nucleos.length) {
         html += `<div class="linea-descendencia"></div>`;
         if (hijos.length) {
             html += `<div class="fila-hijos">`;
-            html += hijos.map((h) => retratoHTML(h)).join('');
+            html += hijos.map((h) => retratoHTML(h, {
+                rol: rolHijo(h),
+                etiqueta: ETIQUETAS_FILIACION[h.tipo_relacion] || null,
+            })).join('');
             html += `</div>`;
         } else {
             html += `<div class="sin-hijos">Sin descendencia registrada</div>`;
@@ -157,32 +188,33 @@ function pintarNucleo(persona, nucleos, progenitores) {
 
     lienzo.innerHTML = html;
     lienzo.classList.remove('entrando');
-    void lienzo.offsetWidth; // fuerza reflow para reiniciar la animacion
+    void lienzo.offsetWidth;
     lienzo.classList.add('entrando');
 
     activarInteracciones(persona, nucleos, progenitores);
 }
 
 function activarInteracciones(persona, nucleos, progenitores) {
-    // Click en un hijo o en la pareja central -> recentra el arbol en esa persona
+    // Click en el retrato (fuera del icono de ficha) -> navega/hace zoom a esa persona
     lienzo.querySelectorAll('.retrato-persona').forEach((el) => {
         el.addEventListener('click', (ev) => {
-            const id = Number(el.dataset.id);
-            // Doble accion: click simple recentra; con Alt/click derecho se podria abrir detalle
-            if (ev.shiftKey) {
-                abrirDetalle(id);
-            } else {
-                cargarNucleo(id);
-            }
+            if (ev.target.closest('.btn-ficha')) return; // el icono maneja su propio click
+            cargarNucleo(Number(el.dataset.id));
         });
     });
 
-    // Progenitores: subir en el arbol
+    // Icono de ficha tecnica -> abre el panel de detalle, sin navegar
+    lienzo.querySelectorAll('.btn-ficha').forEach((btn) => {
+        btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            abrirDetalle(Number(btn.dataset.fichaId));
+        });
+    });
+
     lienzo.querySelectorAll('.progenitor-mini').forEach((el) => {
         el.addEventListener('click', () => cargarNucleo(Number(el.dataset.id)));
     });
 
-    // Pestañas de uniones multiples
     lienzo.querySelectorAll('.pestana-union').forEach((el) => {
         el.addEventListener('click', () => {
             unionActivaIndex = Number(el.dataset.index);
@@ -191,7 +223,6 @@ function activarInteracciones(persona, nucleos, progenitores) {
     });
 }
 
-// ── Migas de pan: click para volver a un punto anterior de la rama ────────
 migas.addEventListener('click', (ev) => {
     const miga = ev.target.closest('.miga');
     if (miga) {
@@ -199,13 +230,18 @@ migas.addEventListener('click', (ev) => {
     }
 });
 
-// ── Panel de detalle (Shift+click sobre un retrato) ────────────────────────
+// ── Panel de detalle (ficha tecnica) ────────────────────────────────────────
 async function abrirDetalle(personaId) {
     panelDetalle.classList.add('abierto');
     panelDetalle.innerHTML = '<div class="cargando">Cargando ficha…</div>';
 
-    const resp = await fetch(`${BASE}/api/personas/detalle?id=${personaId}`);
-    const data = await resp.json();
+    const [respDetalle, respHermanos] = await Promise.all([
+        fetch(`${BASE}/api/personas/detalle?id=${personaId}`),
+        fetch(`${BASE}/api/personas/hermanos?id=${personaId}`),
+    ]);
+    const data = await respDetalle.json();
+    const dataHermanos = await respHermanos.json();
+
     if (data.codigo === 0) {
         panelDetalle.innerHTML = '<span class="cerrar">✕</span><p>No se pudo cargar la ficha.</p>';
         panelDetalle.querySelector('.cerrar').addEventListener('click', cerrarDetalle);
@@ -213,7 +249,19 @@ async function abrirDetalle(personaId) {
     }
 
     const { persona, fotos } = data.datos;
+    const hermanos = dataHermanos.codigo === 1 ? dataHermanos.datos : [];
     const foto = urlFoto(persona.foto_perfil);
+
+    const hermanosHTML = hermanos.length ? `
+        <div class="hermanos-titulo">Hermanos/as</div>
+        <div class="hermanos-lista">
+            ${hermanos.map((h) => `
+                <div class="hermano-item" data-id="${h.id}">
+                    <span>${h.nombres} ${h.apellidos}</span>
+                    <span class="badge-parentesco badge-${h.tipo}">${h.tipo === 'completo' ? 'Hermano/a' : 'Medio/a hermano/a'}</span>
+                </div>
+            `).join('')}
+        </div>` : '';
 
     panelDetalle.innerHTML = `
         <span class="cerrar">✕</span>
@@ -223,15 +271,22 @@ async function abrirDetalle(personaId) {
         <div class="dato">${edadOFechas(persona)}${persona.lugar_nacimiento ? ' · ' + persona.lugar_nacimiento : ''}</div>
         ${persona.biografia ? `<p class="bio">${persona.biografia}</p>` : ''}
         ${fotos.length ? `<div class="galeria">${fotos.map((f) => `<img src="${urlFoto(f.ruta)}" alt="">`).join('')}</div>` : ''}
+        ${hermanosHTML}
     `;
     panelDetalle.querySelector('.cerrar').addEventListener('click', cerrarDetalle);
+    panelDetalle.querySelectorAll('.hermano-item').forEach((el) => {
+        el.addEventListener('click', () => {
+            cerrarDetalle();
+            cargarNucleo(Number(el.dataset.id));
+        });
+    });
 }
 
 function cerrarDetalle() {
     panelDetalle.classList.remove('abierto');
 }
 
-// ── Arranque ────────────────────────────────────────────────────────────
+// ── Arranque ────────────────────────────────────────────────────────────────
 async function iniciar() {
     const resp = await fetch(`${BASE}/api/arbol/raiz`);
     const data = await resp.json();

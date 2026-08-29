@@ -69,6 +69,13 @@ class ArbolController
     {
         $raizId = Configuracion::obtener('raiz_persona_id');
 
+        // Si la raiz configurada apunta a alguien que ya no existe (se
+        // elimino despues de fijarla), cae al fallback en vez de quedar
+        // apuntando a un id fantasma.
+        if ($raizId && !Personas::find((int) $raizId)) {
+            $raizId = null;
+        }
+
         if (!$raizId) {
             $fila = Personas::fetchArray(
                 "SELECT p.id FROM personas p
