@@ -2,7 +2,7 @@ import Swal from 'sweetalert2';
 import { Dropdown } from 'bootstrap';
 
 const BASE = document.querySelector('[data-base]')?.dataset.base ?? '';
-const grid = document.getElementById('gridPersonas');
+const contenedor = document.getElementById('contenedorFamilias');
 
 const Toast = Swal.mixin({
     toast: true,
@@ -16,79 +16,161 @@ function urlFoto(nombreArchivo) {
     return nombreArchivo ? `${BASE}/public/uploads/${nombreArchivo}` : null;
 }
 
-// ── Cargar y pintar listado ─────────────────────────────────────────────
-async function cargarPersonas() {
-    const r = await fetch(`${BASE}/api/personas/listar`);
-    const d = await r.json();
-    if (d.codigo !== 1) return;
-    renderPersonas(d.datos);
+// ── Tarjeta de una persona individual (reutilizada para "sin asociar") ──
+function personaCardHTML(p, dropdownId, sinAsociar = false) {
+    const foto = urlFoto(p.foto_perfil);
+    const iniciales = (p.nombres || '?').trim()[0]?.toUpperCase() || '?';
+    return `
+        <div class="persona-card">
+            <div class="persona-avatar">
+                ${foto ? `<img src="${foto}" alt="">` : `<span>${iniciales}</span>`}
+            </div>
+            <div class="flex-grow-1 min-w-0">
+                ${sinAsociar ? '<div class="sin-asociar-badge">Sin asociar aún</div>' : ''}
+                <div class="persona-nombre">${p.nombres} ${p.apellidos}</div>
+                <div class="persona-sub">
+                    ${p.fecha_nacimiento ? p.fecha_nacimiento.substring(0, 4) : 's.f.'}${p.lugar_nacimiento ? ' · ' + p.lugar_nacimiento : ''}
+                </div>
+                <div class="persona-acciones">
+                    <button class="btn-editar" onclick="editarPersona(${p.id})">
+                        <i class="bi bi-pencil-square"></i> Editar
+                    </button>
+                    <div class="dropdown dropdown-mas">
+                        <button class="btn-mas dropdown-toggle" type="button"
+                                id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
+                            Más
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" aria-labelledby="${dropdownId}">
+                            <li><a class="dropdown-item" href="#" onclick="gestionarUnion(${p.id});return false;">
+                                <i class="bi bi-heart"></i> Agregar unión
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="gestionarHijo(${p.id});return false;">
+                                <i class="bi bi-diagram-3"></i> Vincular hijo/a
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="gestionarProgenitor(${p.id});return false;">
+                                <i class="bi bi-diagram-3-fill"></i> Vincular como hijo/a de...
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="fijarRaiz(${p.id});return false;">
+                                <i class="bi bi-flag"></i> Fijar como raíz
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#" onclick="eliminarPersona(${p.id});return false;">
+                                <i class="bi bi-trash3"></i> Eliminar
+                            </a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>`;
 }
 
-function renderPersonas(personas) {
-    if (!personas.length) {
-        grid.innerHTML = `<div class="col-12">
-            <div class="text-center text-muted py-5">
-                Todavía no hay personas. Agregá la primera con el botón de arriba.
-            </div>
+// ── Vista de una familia en pantalla completa (reemplaza el listado) ────
+window.mostrarVistaFamilia = (indice) => {
+    const familia = familiasCache[indice];
+    if (!familia) return;
+
+    const tituloEl = document.querySelector('.personas-header .titulo');
+    const buscadorEl = document.querySelector('.buscador-wrap');
+    if (tituloEl) tituloEl.textContent = familia.nombre;
+    if (buscadorEl) buscadorEl.style.display = 'none';
+
+    // Usamos los datos completos de cachePersonas (fecha, lugar, foto) en
+    // vez de los datos resumidos de la familia, para reusar la misma
+    // tarjeta completa del listado normal.
+    const miembrosCompletos = familia.miembros.map(
+        (m) => cachePersonas.find((p) => String(p.id) === String(m.id)) || m
+    );
+
+    let html = `
+        <button class="btn btn-sm btn-outline-secondary mb-3" onclick="volverAFamilias()">
+            <i class="bi bi-arrow-left"></i> Volver a familias
+        </button>
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">`;
+    html += miembrosCompletos.map((p, i) => `<div class="col">${personaCardHTML(p, `dropdownFam${i}`)}</div>`).join('');
+    html += `</div>`;
+
+    contenedor.innerHTML = html;
+    contenedor.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((el) => {
+        if (!Dropdown.getInstance(el)) new Dropdown(el);
+    });
+};
+
+window.volverAFamilias = () => {
+    const tituloEl = document.querySelector('.personas-header .titulo');
+    const buscadorEl = document.querySelector('.buscador-wrap');
+    if (tituloEl) tituloEl.textContent = 'Personas registradas';
+    if (buscadorEl) buscadorEl.style.display = '';
+    renderFamilias(familiasCache, sinAsociarCache);
+};
+
+// ── Cargar y pintar: familias + personas sin asociar ────────────────────
+let familiasCache = [];
+let sinAsociarCache = [];
+async function cargarFamilias() {
+    const r = await fetch(`${BASE}/api/personas/familias`);
+    const d = await r.json();
+    if (d.codigo !== 1) return;
+    familiasCache = d.datos.familias;
+    sinAsociarCache = d.datos.sin_asociar;
+    renderFamilias(d.datos.familias, d.datos.sin_asociar);
+}
+
+function renderFamilias(familias, sinAsociar) {
+    if (!familias.length && !sinAsociar.length) {
+        contenedor.innerHTML = `<div class="text-center py-5" style="color:#7c8398;">
+            Todavía no hay personas. Agregá la primera con el botón de arriba.
         </div>`;
         return;
     }
 
-    grid.innerHTML = personas.map((p, i) => {
-        const foto = urlFoto(p.foto_perfil);
-        const iniciales = (p.nombres || '?').trim()[0]?.toUpperCase() || '?';
-        const dropdownId = `dropdownAcciones${i}`;
-        return `
-        <div class="col">
-            <div class="persona-card">
-                <div class="persona-avatar">
-                    ${foto
-                        ? `<img src="${foto}" alt="">`
-                        : `<span>${iniciales}</span>`}
-                </div>
-                <div class="flex-grow-1 min-w-0">
-                    <div class="persona-nombre">${p.nombres} ${p.apellidos}</div>
-                    <div class="persona-sub">
-                        ${p.fecha_nacimiento ? p.fecha_nacimiento.substring(0, 4) : 's.f.'}${p.lugar_nacimiento ? ' · ' + p.lugar_nacimiento : ''}
-                    </div>
-                    <div class="persona-acciones">
-                        <button class="btn-editar" onclick="editarPersona(${p.id})">
-                            <i class="bi bi-pencil-square"></i> Editar
-                        </button>
-                        <div class="dropdown dropdown-mas">
-                            <button class="btn-mas dropdown-toggle" type="button"
-                                    id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
-                                Más
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" aria-labelledby="${dropdownId}">
-                                <li><a class="dropdown-item" href="#" onclick="gestionarUnion(${p.id});return false;">
-                                    <i class="bi bi-heart"></i> Agregar unión
-                                </a></li>
-                                <li><a class="dropdown-item" href="#" onclick="gestionarHijo(${p.id});return false;">
-                                    <i class="bi bi-diagram-3"></i> Vincular hijo/a
-                                </a></li>
-                                <li><a class="dropdown-item" href="#" onclick="fijarRaiz(${p.id});return false;">
-                                    <i class="bi bi-flag"></i> Fijar como raíz
-                                </a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="#" onclick="eliminarPersona(${p.id});return false;">
-                                    <i class="bi bi-trash3"></i> Eliminar
-                                </a></li>
-                            </ul>
-                        </div>
+    let html = '';
+
+    if (familias.length) {
+        html += `<div class="seccion-titulo">Familias</div>`;
+        html += `<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">`;
+        html += familias.map((f, i) => {
+            const buscar = (f.nombre + ' ' + f.miembros.map((m) => `${m.nombres} ${m.apellidos}`).join(' ')).toLowerCase();
+            return `
+            <div class="col familia-item" data-buscar="${buscar}">
+                <div class="familia-card" onclick="mostrarVistaFamilia(${i})">
+                    <div class="familia-icono"><i class="bi bi-people-fill"></i></div>
+                    <div>
+                        <div class="familia-nombre">${f.nombre}</div>
+                        <div class="familia-count">${f.miembros.length} integrante${f.miembros.length === 1 ? '' : 's'}</div>
                     </div>
                 </div>
-            </div>
-        </div>`;
-    }).join('');
+            </div>`;
+        }).join('');
+        html += `</div>`;
+    }
+
+    if (sinAsociar.length) {
+        html += `<div class="seccion-titulo">Sin asociar aún</div>`;
+        html += `<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">`;
+        html += sinAsociar.map((p, i) => {
+            const buscar = `${p.nombres} ${p.apellidos}`.toLowerCase();
+            return `<div class="col persona-item" data-buscar="${buscar}">${personaCardHTML(p, `dropdownSuelta${i}`, true)}</div>`;
+        }).join('');
+        html += `</div>`;
+    }
+
+    contenedor.innerHTML = html;
 
     // Los dropdowns con data-bs-toggle se activan solos si el bundle de
     // Bootstrap ya esta cargado globalmente; esto es un respaldo explicito
     // por si este entry es el primero en importar el componente Dropdown.
-    grid.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((el) => {
+    contenedor.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((el) => {
         if (!Dropdown.getInstance(el)) new Dropdown(el);
     });
 }
+
+// ── Buscador global (filtra tarjetas de familia y de sueltas ya pintadas) ─
+document.getElementById('buscarGlobal')?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.familia-item, .persona-item').forEach((el) => {
+        el.style.display = el.dataset.buscar.includes(q) ? '' : 'none';
+    });
+});
 
 // ── Buscador de personas (para los selects de union/hijo) ────────────────
 let cachePersonas = [];
@@ -200,7 +282,7 @@ async function mostrarFormPersona(datos = null) {
     const d = await r.json();
 
     Toast.fire({ icon: d.codigo === 1 ? 'success' : 'error', title: d.mensaje });
-    if (d.codigo === 1) cargarPersonas();
+    if (d.codigo === 1) { obtenerTodas(); cargarFamilias(); }
 }
 
 window.editarPersona = (id) => {
@@ -225,27 +307,30 @@ window.eliminarPersona = async (id) => {
     const r = await fetch(`${BASE}/api/personas/eliminar`, { method: 'POST', body });
     const d = await r.json();
     Toast.fire({ icon: d.codigo === 1 ? 'success' : 'error', title: d.mensaje });
-    if (d.codigo === 1) cargarPersonas();
+    if (d.codigo === 1) { obtenerTodas(); cargarFamilias(); }
 };
 
 // ── Agregar unión (pareja) ─────────────────────────────────────────────
 window.gestionarUnion = async (personaId) => {
     const todas = await obtenerTodas();
 
-    // Excluir a la propia persona, a sus progenitores y a sus hijos
-    // (no puede ser pareja de su padre/madre ni de su hijo/a)
-    const [rProgenitores, rHijos, rUniones] = await Promise.all([
+    // Excluir a la propia persona, a sus progenitores, a sus hijos y a sus
+    // hermanos/medios hermanos (no puede ser pareja de ninguno de esos)
+    const [rProgenitores, rHijos, rUniones, rHermanos] = await Promise.all([
         fetch(`${BASE}/api/personas/progenitores?id=${personaId}`),
         fetch(`${BASE}/api/personas/hijos?id=${personaId}`),
         fetch(`${BASE}/api/personas/uniones?id=${personaId}`),
+        fetch(`${BASE}/api/personas/hermanos?id=${personaId}`),
     ]);
     const dProgenitores = await rProgenitores.json();
     const dHijos = await rHijos.json();
     const dUniones = await rUniones.json();
+    const dHermanos = await rHermanos.json();
     const progenitoresIds = dProgenitores.codigo === 1 ? dProgenitores.datos.map((p) => p.id) : [];
     const hijosIds = dHijos.codigo === 1 ? dHijos.datos.map((h) => h.id) : [];
+    const hermanosIds = dHermanos.codigo === 1 ? dHermanos.datos.map((h) => h.id) : [];
     const unionesExistentes = dUniones.codigo === 1 ? dUniones.datos : [];
-    const excluir = [personaId, ...progenitoresIds, ...hijosIds];
+    const excluir = [personaId, ...progenitoresIds, ...hijosIds, ...hermanosIds];
 
     // Aviso (no bloqueo) si ya tiene una union activa -- una segunda union
     // es valida (viudez, divorcio, segundas nupcias), pero DOS activas a
@@ -322,6 +407,7 @@ window.gestionarUnion = async (personaId) => {
     const r = await fetch(`${BASE}/api/uniones/guardar`, { method: 'POST', body });
     const d = await r.json();
     Toast.fire({ icon: d.codigo === 1 ? 'success' : 'error', title: d.mensaje });
+    if (d.codigo === 1) cargarFamilias();
 };
 
 // ── Agregar hijo/a (filiación) ────────────────────────────────────────
@@ -442,6 +528,7 @@ window.gestionarHijo = async (progenitorId) => {
     }
 
     Toast.fire({ icon: resultadoPrincipal.codigo === 1 ? 'success' : 'error', title: mensaje });
+    if (resultadoPrincipal.codigo === 1) cargarFamilias();
 };
 
 // ── Fijar raíz del árbol ─────────────────────────────────────────────
@@ -453,6 +540,130 @@ window.fijarRaiz = async (id) => {
     Toast.fire({ icon: d.codigo === 1 ? 'success' : 'error', title: d.mensaje });
 };
 
+// ── Vincular como hijo/a de... (el espejo de gestionarHijo, desde el ────
+// lado del hijo: eligís vos quién es su progenitor/a) ────────────────────
+window.gestionarProgenitor = async (hijoId) => {
+    const todas = await obtenerTodas();
+
+    // Excluir a la propia persona, a sus propios hijos (no puede ser hijo
+    // de su propio hijo/a) y a quienes ya sean sus progenitores
+    const [rHijosPropios, rProgenitoresActuales] = await Promise.all([
+        fetch(`${BASE}/api/personas/hijos?id=${hijoId}`),
+        fetch(`${BASE}/api/personas/progenitores?id=${hijoId}`),
+    ]);
+    const dHijosPropios = await rHijosPropios.json();
+    const dProgenitoresActuales = await rProgenitoresActuales.json();
+    const hijosPropiosIds = dHijosPropios.codigo === 1 ? dHijosPropios.datos.map((h) => h.id) : [];
+    const progenitoresActualesIds = dProgenitoresActuales.codigo === 1 ? dProgenitoresActuales.datos.map((p) => p.id) : [];
+    const excluir = [hijoId, ...hijosPropiosIds, ...progenitoresActualesIds];
+
+    const disponibles = todas.filter((p) => !excluir.map(String).includes(String(p.id)));
+    if (!disponibles.length) {
+        Swal.fire({
+            icon: 'info',
+            title: 'No hay personas disponibles',
+            text: 'No hay a quién vincular como progenitor/a. Creá una persona nueva primero si hace falta.',
+            confirmButtonColor: '#e8b84b',
+        });
+        return;
+    }
+
+    const { isConfirmed: pasoUno } = await Swal.fire({
+        title: 'Vincular como hijo/a de...',
+        html: `
+            <div class="text-start small">
+                <label class="form-label">Progenitor/a (padre o madre)</label>
+                <select id="pg-progenitor" class="form-select form-select-sm mb-2">
+                    ${opcionesSelect(disponibles, [])}
+                </select>
+                <label class="form-label">Tipo de relación</label>
+                <select id="pg-tipo" class="form-select form-select-sm">
+                    <option value="biologico">Biológico/a</option>
+                    <option value="adoptivo">Adoptivo/a</option>
+                    <option value="padrastro">Hijastro/a (padrastro)</option>
+                    <option value="madrastra">Hijastro/a (madrastra)</option>
+                    <option value="tutor">Bajo tutela</option>
+                </select>
+            </div>`,
+        showCancelButton: true,
+        confirmButtonText: 'Continuar',
+        confirmButtonColor: '#e8b84b',
+        width: '420px',
+        preConfirm: () => {
+            if (!document.getElementById('pg-progenitor').value) {
+                Swal.showValidationMessage('Selecciona a la persona progenitora');
+                return false;
+            }
+            return true;
+        },
+    });
+    if (!pasoUno) return;
+
+    const progenitorId = document.getElementById('pg-progenitor').value;
+    const tipoRelacion = document.getElementById('pg-tipo').value;
+
+    // Paso 2: si ese progenitor tiene pareja(s), preguntar a que union
+    // pertenece, para vincular tambien al otro progenitor automaticamente
+    const rUniones = await fetch(`${BASE}/api/personas/uniones?id=${progenitorId}`);
+    const dUniones = await rUniones.json();
+    const uniones = dUniones.codigo === 1 ? dUniones.datos : [];
+
+    let unionSeleccionada = null;
+    if (uniones.length) {
+        const opcionesUnion = uniones.map((u, i) => {
+            const etiquetaPareja = u.pareja ? `${u.pareja.nombres} ${u.pareja.apellidos}` : 'sin pareja registrada';
+            return `<option value="${i}">${u.tipo === 'matrimonio' ? 'Matrimonio' : 'Unión'} con ${etiquetaPareja} (${u.estado})</option>`;
+        }).join('');
+
+        const { isConfirmed: pasoDos } = await Swal.fire({
+            title: '¿Pertenece a alguna de estas uniones?',
+            html: `
+                <div class="text-start small">
+                    <select id="pg-union" class="form-select form-select-sm">
+                        ${opcionesUnion}
+                        <option value="">— Sin unión específica —</option>
+                    </select>
+                    <p class="text-muted small mt-2 mb-0">
+                        Si elegís una unión, también se vinculará automáticamente con el otro progenitor.
+                    </p>
+                </div>`,
+            showCancelButton: true,
+            confirmButtonText: 'Vincular',
+            confirmButtonColor: '#e8b84b',
+            width: '420px',
+            preConfirm: () => true,
+        });
+        if (!pasoDos) return;
+
+        const idx = document.getElementById('pg-union').value;
+        unionSeleccionada = idx !== '' ? uniones[idx] : null;
+    }
+
+    const vincular = async (progenitorVinculo) => {
+        const body = new FormData();
+        body.append('hijo_id', hijoId);
+        body.append('progenitor_id', progenitorVinculo);
+        body.append('union_id', unionSeleccionada ? unionSeleccionada.union_id : '');
+        body.append('tipo_relacion', tipoRelacion);
+        const r = await fetch(`${BASE}/api/filiaciones/guardar`, { method: 'POST', body });
+        return r.json();
+    };
+
+    const resultadoPrincipal = await vincular(progenitorId);
+    let mensaje = resultadoPrincipal.mensaje;
+
+    if (resultadoPrincipal.codigo === 1 && unionSeleccionada && unionSeleccionada.pareja) {
+        const resultadoPareja = await vincular(unionSeleccionada.pareja.id);
+        if (resultadoPareja.codigo === 1) {
+            mensaje = 'Vinculado/a con ambos progenitores';
+        }
+    }
+
+    Toast.fire({ icon: resultadoPrincipal.codigo === 1 ? 'success' : 'error', title: mensaje });
+    if (resultadoPrincipal.codigo === 1) cargarFamilias();
+};
+
 // ── Init ──────────────────────────────────────────────────────────────
 document.getElementById('btnNuevaPersona').addEventListener('click', () => mostrarFormPersona());
-obtenerTodas().then(cargarPersonas);
+obtenerTodas();
+cargarFamilias();

@@ -9,7 +9,9 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 1.5rem;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.25rem;
     }
 
     .personas-header .titulo {
@@ -37,6 +39,7 @@
         gap: .5rem;
         transition: all .3s;
         letter-spacing: .5px;
+        flex-shrink: 0;
     }
 
     .btn-nueva-persona:hover {
@@ -44,9 +47,97 @@
         box-shadow: 0 8px 25px rgba(232, 184, 75, .35);
     }
 
-    .persona-card {
+    /* ── Buscador global ──────────────────────────────────────────────────── */
+    .buscador-wrap {
+        position: relative;
+        margin-bottom: 1.5rem;
+    }
+
+    .buscador-wrap i {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #8a7a52;
+    }
+
+    #buscarGlobal {
+        width: 100%;
+        padding: .65rem 1rem .65rem 2.4rem;
+        border-radius: 10px;
+        border: 1.5px solid #c9bb92;
+        background: #fdf7ea;
+        color: #2e2716;
+        font-size: .9rem;
+    }
+
+    #buscarGlobal:focus {
+        outline: none;
+        border-color: #4c7a5d;
+        box-shadow: 0 0 0 3px rgba(76, 122, 93, .12);
+    }
+
+    .seccion-titulo {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 1rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: #6b5a38;
+        margin: 1.5rem 0 .75rem;
+    }
+
+    /* ── Tarjeta de familia ───────────────────────────────────────────────── */
+    .familia-card {
         background: linear-gradient(160deg, #23402f, #16281d);
         border: 1px solid #3d6250;
+        border-radius: 14px;
+        padding: 1.1rem 1.25rem;
+        cursor: pointer;
+        transition: all .2s;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        gap: .85rem;
+    }
+
+    .familia-card:hover {
+        border-color: #c9a24b;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, .25);
+    }
+
+    .familia-icono {
+        flex-shrink: 0;
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: rgba(232, 184, 75, .12);
+        border: 1.5px solid #c9a24b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #e8b84b;
+        font-size: 1.3rem;
+    }
+
+    .familia-nombre {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 1.05rem;
+        color: #e8eaf0;
+    }
+
+    .familia-count {
+        font-size: .76rem;
+        color: #9db3a4;
+        margin-top: .1rem;
+    }
+
+    /* ── Tarjeta de persona (sueltas, y dentro del modal de familia) ────────── */
+    .persona-card {
+        background: linear-gradient(160deg, #23402f, #16281d);
+        border: 1px dashed #8a6d2e;
         border-radius: 14px;
         padding: 1.25rem;
         display: flex;
@@ -104,6 +195,18 @@
         margin-bottom: .75rem;
     }
 
+    .sin-asociar-badge {
+        display: inline-block;
+        font-size: .62rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: #a06a2e;
+        border: 1px solid #a06a2e;
+        border-radius: 10px;
+        padding: .05rem .4rem;
+        margin-bottom: .4rem;
+    }
+
     .persona-acciones {
         display: flex;
         gap: .5rem;
@@ -159,6 +262,10 @@
         background: rgba(224, 82, 82, .1);
         color: #e05252 !important;
     }
+
+    /* La lista de integrantes del modal "ver familia" usa componentes
+       reales de Bootstrap (list-group, badge, btn-outline-secondary) —
+       no necesita CSS propio. */
 </style>
 
 <div class="personas-header">
@@ -168,10 +275,13 @@
     </button>
 </div>
 
-<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3" id="gridPersonas" data-base="<?= urlBase() ?>">
-    <div class="col">
-        <div class="text-center py-5" style="color:#7c8398;">Cargando personas…</div>
-    </div>
+<div class="buscador-wrap">
+    <i class="bi bi-search"></i>
+    <input type="text" id="buscarGlobal" placeholder="Buscar cualquier persona, en cualquier familia…">
+</div>
+
+<div id="contenedorFamilias" data-base="<?= urlBase() ?>">
+    <div class="text-center py-5" style="color:#7c8398;">Cargando personas…</div>
 </div>
 
 <script src="<?= asset('build/js/personas/index.js') ?>" type="module"></script>

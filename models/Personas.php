@@ -174,4 +174,170 @@ class Personas extends ActiveRecord
         }
         return $resultado;
     }
+
+    /**
+     * Agrupa a todas las personas en "familias": cada union (pareja) forma
+     * una familia con sus hijos vinculados a esa union; los progenitores
+     * solteros (filiacion sin union) forman su propia familia monoparental;
+     * y quien no tenga ningun vinculo (ni union, ni hijos, ni progenitores)
+     * queda sin asociar.
+     */
+    public static function familias(): array
+    {
+        $primerApellido = function ($apellidos) {
+            $partes = explode(' ', trim((string) $apellidos));
+            return $partes[0] ?? '';
+        };
+
+        $uniones = self::fetchArray(
+            "SELECT u.id AS union_id, u.persona_a_id, u.persona_b_id,
+                    pa.nombres AS a_nombres, pa.apellidos AS a_apellidos, pa.foto_perfil AS a_foto,
+                    pb.nombres AS b_nombres, pb.apellidos AS b_apellidos, pb.foto_perfil AS b_foto
+             FROM uniones u
+             JOIN personas pa ON pa.id = u.persona_a_id
+             LEFT JOIN personas pb ON pb.id = u.persona_b_id"
+        );
+
+        $filiaciones = self::fetchArray(
+            "SELECT f.hijo_id, f.progenitor_id, f.union_id,
+                    p.nombres, p.apellidos, p.foto_perfil
+             FROM filiaciones f
+             JOIN personas p ON p.id = f.hijo_id"
+        );
+
+        $familias = [];
+        $agrupados = [];
+
+        // 1) Una familia por cada union, con sus hijos (por union_id)
+        foreach ($uniones as $u) {
+            $unionId = (int) $u['union_id'];
+            $apA = $primerApellido($u['a_apellidos']);
+            $apB = $u['persona_b_id'] ? $primerApellido($u['b_apellidos']) : null;
+
+            $miembros = [[
+                'id' => (int) $u['persona_a_id'],
+                'nombres' => $u['a_nombres'],
+                'apellidos' => $u['a_apellidos'],
+                'foto_perfil' => $u['a_foto'],
+                'rol' => 'Cónyuge',
+            ]];
+            $agrupados[(int) $u['persona_a_id']] = true;
+
+            if ($u['persona_b_id']) {
+                $miembros[] = [
+                    'id' => (int) $u['persona_b_id'],
+                    'nombres' => $u['b_nombres'],
+                    'apellidos' => $u['b_apellidos'],
+                    'foto_perfil' => $u['b_foto'],
+                    'rol' => 'Cónyuge',
+                ];
+                $agrupados[(int) $u['persona_b_id']] = true;
+            }
+
+            foreach ($filiaciones as $f) {
+                if ((int) $f['union_id'] === $unionId) {
+                    $existe = array_filter($miembros, fn($m) => $m['id'] === (int) $f['hijo_id']);
+                    if (!$existe) {
+                        $miembros[] = [
+                            'id' => (int) $f['hijo_id'],
+                            'nombres' => $f['nombres'],
+                            'apellidos' => $f['apellidos'],
+                            'foto_perfil' => $f['foto_perfil'],
+                            'rol' => 'Hijo/a',
+                        ];
+                    }
+                    $agrupados[(int) $f['hijo_id']] = true;
+                }
+            }
+
+            $familias[] = [
+                'id' => 'union_' . $unionId,
+                'nombre' => 'Familia ' . trim($apA . ' ' . ($apB ?? '')),
+                'miembros' => $miembros,
+            ];
+        }
+
+        // 2) Filiaciones sin union (progenitor soltero) -> agregar al hijo a
+        //    una familia donde ya aparezca ese progenitor, o crear una nueva
+        //    familia monoparental si el progenitor no esta en ninguna
+        $sueltasPorProgenitor = [];
+        foreach ($filiaciones as $f) {
+            if ($f['union_id']) {
+                continue;
+            }
+            $sueltasPorProgenitor[$f['progenitor_id']][] = $f;
+        }
+
+        foreach ($sueltasPorProgenitor as $progenitorId => $hijos) {
+            $progenitorId = (int) $progenitorId;
+            $familiaExistente = null;
+
+            foreach ($familias as &$fam) {
+                foreach ($fam['miembros'] as $m) {
+                    if ($m['id'] === $progenitorId) {
+                        $familiaExistente = &$fam;
+                        break 2;
+                    }
+                }
+            }
+            unset($fam);
+
+            if ($familiaExistente !== null) {
+                foreach ($hijos as $h) {
+                    $existe = array_filter($familiaExistente['miembros'], fn($m) => $m['id'] === (int) $h['hijo_id']);
+                    if (!$existe) {
+                        $familiaExistente['miembros'][] = [
+                            'id' => (int) $h['hijo_id'],
+                            'nombres' => $h['nombres'],
+                            'apellidos' => $h['apellidos'],
+                            'foto_perfil' => $h['foto_perfil'],
+                            'rol' => 'Hijo/a',
+                        ];
+                    }
+                    $agrupados[(int) $h['hijo_id']] = true;
+                }
+                unset($familiaExistente);
+            } else {
+                $progenitor = self::find($progenitorId);
+                if (!$progenitor) {
+                    continue;
+                }
+                $miembros = [[
+                    'id' => $progenitorId,
+                    'nombres' => $progenitor->nombres,
+                    'apellidos' => $progenitor->apellidos,
+                    'foto_perfil' => $progenitor->foto_perfil,
+                    'rol' => 'Progenitor/a',
+                ]];
+                $agrupados[$progenitorId] = true;
+
+                foreach ($hijos as $h) {
+                    $miembros[] = [
+                        'id' => (int) $h['hijo_id'],
+                        'nombres' => $h['nombres'],
+                        'apellidos' => $h['apellidos'],
+                        'foto_perfil' => $h['foto_perfil'],
+                        'rol' => 'Hijo/a',
+                    ];
+                    $agrupados[(int) $h['hijo_id']] = true;
+                }
+
+                $familias[] = [
+                    'id' => 'progenitor_' . $progenitorId,
+                    'nombre' => 'Familia ' . $primerApellido($progenitor->apellidos),
+                    'miembros' => $miembros,
+                ];
+            }
+        }
+
+        // 3) Quien no quedo en ninguna familia, va suelto
+        $sinAsociar = [];
+        foreach (self::all() as $p) {
+            if (!isset($agrupados[(int) $p->id])) {
+                $sinAsociar[] = $p->atributos() + ['id' => $p->id];
+            }
+        }
+
+        return ['familias' => $familias, 'sin_asociar' => $sinAsociar];
+    }
 }

@@ -190,6 +190,12 @@ class PersonasController
         responderJSON(1, '', Personas::hermanos($id));
     }
 
+    /** API: todas las personas agrupadas por familia (union), + las que no tienen ningun vinculo */
+    public static function familiasAPI()
+    {
+        responderJSON(1, '', Personas::familias());
+    }
+
     /** API: uniones de una persona con datos de pareja (para elegir a que union pertenece un hijo) */
     public static function unionesAPI()
     {
