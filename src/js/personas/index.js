@@ -1,5 +1,4 @@
 import Swal from 'sweetalert2';
-import { Dropdown } from 'bootstrap';
 
 const BASE = document.querySelector('[data-base]')?.dataset.base ?? '';
 const contenedor = document.getElementById('contenedorFamilias');
@@ -17,7 +16,7 @@ function urlFoto(nombreArchivo) {
 }
 
 // ── Tarjeta de una persona individual (reutilizada para "sin asociar") ──
-function personaCardHTML(p, dropdownId, sinAsociar = false) {
+function personaCardHTML(p, _idNoUsado, sinAsociar = false) {
     const foto = urlFoto(p.foto_perfil);
     const iniciales = (p.nombres || '?').trim()[0]?.toUpperCase() || '?';
     return `
@@ -35,40 +34,37 @@ function personaCardHTML(p, dropdownId, sinAsociar = false) {
                     <button class="btn-editar" onclick="editarPersona(${p.id})">
                         <i class="bi bi-pencil-square"></i> Editar
                     </button>
-                    <div class="dropdown dropdown-mas">
-                        <button class="btn-mas dropdown-toggle" type="button"
-                                id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
-                            Más
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" aria-labelledby="${dropdownId}">
-                            <li><a class="dropdown-item" href="#" onclick="gestionarUnion(${p.id});return false;">
-                                <i class="bi bi-heart"></i> Agregar unión
-                            </a></li>
-                            <li><a class="dropdown-item" href="#" onclick="gestionarHijo(${p.id});return false;">
-                                <i class="bi bi-diagram-3"></i> Vincular hijo/a
-                            </a></li>
-                            <li><a class="dropdown-item" href="#" onclick="gestionarProgenitor(${p.id});return false;">
-                                <i class="bi bi-diagram-3-fill"></i> Vincular como hijo/a de...
-                            </a></li>
-                            <li><a class="dropdown-item" href="#" onclick="fijarRaiz(${p.id});return false;">
-                                <i class="bi bi-flag"></i> Fijar como raíz
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-danger" href="#" onclick="eliminarPersona(${p.id});return false;">
-                                <i class="bi bi-trash3"></i> Eliminar
-                            </a></li>
-                        </ul>
-                    </div>
+                    <button class="btn btn-sm btn-outline-info" onclick="verFicha(${p.id})" title="Ver ficha técnica">
+                        <i class="bi bi-info-circle"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="gestionarUnion(${p.id})" title="Agregar unión">
+                        <i class="bi bi-heart"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="gestionarHijo(${p.id})" title="Vincular hijo/a">
+                        <i class="bi bi-diagram-3"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="gestionarProgenitor(${p.id})" title="Vincular como hijo/a de...">
+                        <i class="bi bi-diagram-3-fill"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="fijarRaiz(${p.id})" title="Fijar como raíz">
+                        <i class="bi bi-flag"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="eliminarPersona(${p.id})" title="Eliminar">
+                        <i class="bi bi-trash3"></i>
+                    </button>
                 </div>
             </div>
         </div>`;
 }
 
 // ── Vista de una familia en pantalla completa (reemplaza el listado) ────
-window.mostrarVistaFamilia = (indice) => {
-    const familia = familiasCache[indice];
-    if (!familia) return;
+// vistaActualFamiliaId guarda en que familia esta parado el usuario (por su
+// id estable, ej. "union_11"), asi que al refrescar despues de un guardado
+// se puede volver a pintar la MISMA vista en vez de saltar al listado
+// principal y perder el hilo de lo que se estaba haciendo.
+let vistaActualFamiliaId = null;
 
+function pintarVistaFamilia(familia) {
     const tituloEl = document.querySelector('.personas-header .titulo');
     const buscadorEl = document.querySelector('.buscador-wrap');
     if (tituloEl) tituloEl.textContent = familia.nombre;
@@ -86,22 +82,44 @@ window.mostrarVistaFamilia = (indice) => {
             <i class="bi bi-arrow-left"></i> Volver a familias
         </button>
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">`;
-    html += miembrosCompletos.map((p, i) => `<div class="col">${personaCardHTML(p, `dropdownFam${i}`)}</div>`).join('');
+    html += miembrosCompletos.map((p) => `<div class="col">${personaCardHTML(p)}</div>`).join('');
     html += `</div>`;
 
     contenedor.innerHTML = html;
-    contenedor.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((el) => {
-        if (!Dropdown.getInstance(el)) new Dropdown(el);
-    });
+}
+
+window.mostrarVistaFamilia = (indice) => {
+    const familia = familiasCache[indice];
+    if (!familia) return;
+    vistaActualFamiliaId = familia.id;
+    pintarVistaFamilia(familia);
 };
 
 window.volverAFamilias = () => {
+    vistaActualFamiliaId = null;
     const tituloEl = document.querySelector('.personas-header .titulo');
     const buscadorEl = document.querySelector('.buscador-wrap');
     if (tituloEl) tituloEl.textContent = 'Personas registradas';
     if (buscadorEl) buscadorEl.style.display = '';
     renderFamilias(familiasCache, sinAsociarCache);
 };
+
+// Decide que pintar despues de recargar los datos: si el usuario estaba
+// parado dentro de una familia, se queda ahi (repintada con los datos
+// frescos); si no, se pinta el listado principal como siempre.
+function renderVistaActual() {
+    if (vistaActualFamiliaId) {
+        const familia = familiasCache.find((f) => f.id === vistaActualFamiliaId);
+        if (familia) {
+            pintarVistaFamilia(familia);
+            return;
+        }
+        // la familia ya no existe tal cual (por ejemplo se elimino a la
+        // ultima persona que la sostenia) -- volvemos al listado principal
+        vistaActualFamiliaId = null;
+    }
+    renderFamilias(familiasCache, sinAsociarCache);
+}
 
 // ── Cargar y pintar: familias + personas sin asociar ────────────────────
 let familiasCache = [];
@@ -112,7 +130,7 @@ async function cargarFamilias() {
     if (d.codigo !== 1) return;
     familiasCache = d.datos.familias;
     sinAsociarCache = d.datos.sin_asociar;
-    renderFamilias(d.datos.familias, d.datos.sin_asociar);
+    renderVistaActual();
 }
 
 function renderFamilias(familias, sinAsociar) {
@@ -147,21 +165,14 @@ function renderFamilias(familias, sinAsociar) {
     if (sinAsociar.length) {
         html += `<div class="seccion-titulo">Sin asociar aún</div>`;
         html += `<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">`;
-        html += sinAsociar.map((p, i) => {
+        html += sinAsociar.map((p) => {
             const buscar = `${p.nombres} ${p.apellidos}`.toLowerCase();
-            return `<div class="col persona-item" data-buscar="${buscar}">${personaCardHTML(p, `dropdownSuelta${i}`, true)}</div>`;
+            return `<div class="col persona-item" data-buscar="${buscar}">${personaCardHTML(p, null, true)}</div>`;
         }).join('');
         html += `</div>`;
     }
 
     contenedor.innerHTML = html;
-
-    // Los dropdowns con data-bs-toggle se activan solos si el bundle de
-    // Bootstrap ya esta cargado globalmente; esto es un respaldo explicito
-    // por si este entry es el primero en importar el componente Dropdown.
-    contenedor.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((el) => {
-        if (!Dropdown.getInstance(el)) new Dropdown(el);
-    });
 }
 
 // ── Buscador global (filtra tarjetas de familia y de sueltas ya pintadas) ─
@@ -180,6 +191,115 @@ async function obtenerTodas() {
     cachePersonas = d.codigo === 1 ? d.datos : [];
     return cachePersonas;
 }
+
+// ── Vista previa (foto + nombre + fecha) al elegir a alguien en un select ─
+function previewPersonaHTML(p) {
+    if (!p) return '';
+    const foto = urlFoto(p.foto_perfil);
+    const iniciales = (p.nombres || '?').trim()[0]?.toUpperCase() || '?';
+    return `
+        <div class="d-flex align-items-center gap-2 mt-1 mb-2 p-2"
+             style="background:#f7f0dc;border:1px solid #c9bb92;border-radius:8px;">
+            <div style="width:38px;height:38px;border-radius:50%;overflow:hidden;background:#eee2c6;
+                        display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                ${foto
+            ? `<img src="${foto}" style="width:100%;height:100%;object-fit:cover;">`
+            : `<span style="font-weight:700;color:#8a6d2e;font-size:.9rem;">${iniciales}</span>`}
+            </div>
+            <div style="font-size:.8rem;text-align:left;">
+                <div style="font-weight:600;color:#2e2716;">${p.nombres} ${p.apellidos}</div>
+                <div style="color:#8a7a52;font-size:.72rem;">
+                    ${p.fecha_nacimiento ? p.fecha_nacimiento.substring(0, 4) : 's.f.'}${p.lugar_nacimiento ? ' · ' + p.lugar_nacimiento : ''}
+                </div>
+            </div>
+        </div>`;
+}
+
+function activarPreviewSelect(selectId, previewId, personas, unionesActivasMap = null) {
+    const sel = document.getElementById(selectId);
+    const preview = document.getElementById(previewId);
+    if (!sel || !preview) return;
+    const actualizar = () => {
+        const p = personas.find((x) => String(x.id) === String(sel.value));
+        let html = previewPersonaHTML(p);
+        if (p && unionesActivasMap && unionesActivasMap[p.id]) {
+            const pareja = unionesActivasMap[p.id];
+            html += `<div style="background:rgba(224,82,82,.12);border:1px solid #e05252;border-radius:8px;
+                        padding:.4rem .65rem;margin-top:-.4rem;margin-bottom:.6rem;font-size:.75rem;color:#8a2020;">
+                        ⚠️ Ya tiene una unión <strong>activa</strong> con ${pareja.nombres} ${pareja.apellidos}.
+                     </div>`;
+        }
+        preview.innerHTML = html;
+    };
+    sel.addEventListener('change', actualizar);
+    actualizar();
+}
+
+// ── Ficha técnica (modal): misma info que en el árbol, accesible desde
+// la vista de Personas -- foto, apodo, fechas, biografía, galería, y
+// hermanos/medios hermanos, clickeables para saltar de ficha en ficha.
+window.verFicha = async (personaId) => {
+    Swal.fire({
+        title: 'Cargando ficha…',
+        html: '<div class="text-center py-3"><div class="spinner-border" role="status"></div></div>',
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: 640,
+    });
+
+    const rDetalle = await fetch(`${BASE}/api/personas/detalle?id=${personaId}`);
+    const dDetalle = await rDetalle.json();
+
+    if (dDetalle.codigo === 0) {
+        Swal.fire({ icon: 'error', title: 'No se pudo cargar la ficha' });
+        return;
+    }
+
+    const { persona, fotos } = dDetalle.datos;
+    const foto = urlFoto(persona.foto_perfil);
+
+    const fechas = `${persona.fecha_nacimiento ? persona.fecha_nacimiento.substring(0, 4) : 's.f.'}` +
+        `${persona.fecha_fallecimiento ? ' – ' + persona.fecha_fallecimiento.substring(0, 4) : ''}` +
+        `${persona.lugar_nacimiento ? ' · ' + persona.lugar_nacimiento : ''}`;
+
+    const galeriaHTML = fotos.length ? `
+        <div class="d-flex gap-1 flex-wrap mt-2">
+            ${fotos.map((f) => {
+        const urlF = urlFoto(f.ruta);
+        return `<img src="${urlF}" onclick="mostrarFotoGrande('${urlF}')"
+                    style="width:76px;height:76px;object-fit:cover;border-radius:6px;border:1px solid #c9bb92;cursor:pointer;">`;
+    }).join('')}
+        </div>` : '';
+
+    Swal.fire({
+        html: `
+            <div class="text-start">
+                ${foto ? `<img src="${foto}" onclick="mostrarFotoGrande('${foto}')"
+                    style="width:100%;max-height:420px;object-fit:contain;background:#f3ead6;border-radius:8px;cursor:pointer;">` : ''}
+                <h4 class="mt-3 mb-1">${persona.nombres} ${persona.apellidos}</h4>
+                ${persona.apodo ? `<div class="text-muted small">Conocido/a como "${persona.apodo}"</div>` : ''}
+                <div class="text-muted small mb-2">${fechas}</div>
+                ${persona.biografia ? `<p style="font-size:.9rem;">${persona.biografia}</p>` : ''}
+                ${galeriaHTML}
+            </div>`,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: 640,
+    });
+};
+
+// Previsualizacion de foto en grande (desde la ficha tecnica)
+window.mostrarFotoGrande = (url) => {
+    Swal.fire({
+        imageUrl: url,
+        imageAlt: 'Foto',
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: 'min(90vw, 800px)',
+        background: '#0f1117',
+        padding: '1rem',
+    });
+};
 
 function opcionesSelect(personas, excluirIds = null) {
     const excluidos = Array.isArray(excluirIds) ? excluirIds.map(String) : [String(excluirIds)];
@@ -314,23 +434,35 @@ window.eliminarPersona = async (id) => {
 window.gestionarUnion = async (personaId) => {
     const todas = await obtenerTodas();
 
-    // Excluir a la propia persona, a sus progenitores, a sus hijos y a sus
-    // hermanos/medios hermanos (no puede ser pareja de ninguno de esos)
-    const [rProgenitores, rHijos, rUniones, rHermanos] = await Promise.all([
-        fetch(`${BASE}/api/personas/progenitores?id=${personaId}`),
-        fetch(`${BASE}/api/personas/hijos?id=${personaId}`),
+    // Excluir a TODA la red familiar de esta persona (progenitores, hijos,
+    // hermanos, abuelos, tios, primos, parejas actuales y pasadas -- todo
+    // en cascada), no solo a los parientes directos.
+    const [rRed, rUniones, rUnionesActivas] = await Promise.all([
+        fetch(`${BASE}/api/personas/red-familiar?id=${personaId}`),
         fetch(`${BASE}/api/personas/uniones?id=${personaId}`),
-        fetch(`${BASE}/api/personas/hermanos?id=${personaId}`),
+        fetch(`${BASE}/api/personas/uniones-activas`),
     ]);
-    const dProgenitores = await rProgenitores.json();
-    const dHijos = await rHijos.json();
+    const dRed = await rRed.json();
     const dUniones = await rUniones.json();
-    const dHermanos = await rHermanos.json();
-    const progenitoresIds = dProgenitores.codigo === 1 ? dProgenitores.datos.map((p) => p.id) : [];
-    const hijosIds = dHijos.codigo === 1 ? dHijos.datos.map((h) => h.id) : [];
-    const hermanosIds = dHermanos.codigo === 1 ? dHermanos.datos.map((h) => h.id) : [];
+    const dUnionesActivas = await rUnionesActivas.json();
+    const redIds = dRed.codigo === 1 ? dRed.datos : [];
     const unionesExistentes = dUniones.codigo === 1 ? dUniones.datos : [];
-    const excluir = [personaId, ...progenitoresIds, ...hijosIds, ...hermanosIds];
+    const unionesActivasMap = dUnionesActivas.codigo === 1 ? dUnionesActivas.datos : {};
+    const excluir = [personaId, ...redIds];
+
+    // Heterosexual por defecto: si conocemos el genero de quien inicia,
+    // solo mostramos candidatos de genero distinto. Si no lo sabemos
+    // (null/otro), no filtramos por genero.
+    const personaActual = todas.find((p) => String(p.id) === String(personaId));
+    const generoOpuesto = personaActual?.genero === 'masculino' ? 'femenino'
+        : personaActual?.genero === 'femenino' ? 'masculino'
+            : null;
+
+    const disponibles = todas.filter((p) => {
+        if (excluir.map(String).includes(String(p.id))) return false;
+        if (generoOpuesto && p.genero && p.genero !== generoOpuesto) return false;
+        return true;
+    });
 
     // Aviso (no bloqueo) si ya tiene una union activa -- una segunda union
     // es valida (viudez, divorcio, segundas nupcias), pero DOS activas a
@@ -351,10 +483,11 @@ window.gestionarUnion = async (personaId) => {
             <div class="text-start small">
                 ${avisoActiva}
                 <label class="form-label">Pareja</label>
-                <select id="u-pareja" class="form-select form-select-sm mb-2">
+                <select id="u-pareja" class="form-select form-select-sm mb-1">
                     <option value="">— Sin pareja registrada —</option>
-                    ${opcionesSelect(todas, excluir)}
+                    ${opcionesSelect(disponibles, [])}
                 </select>
+                <div id="u-pareja-preview"></div>
                 <div class="row g-2 mb-2">
                     <div class="col-6">
                         <label class="form-label">Tipo</label>
@@ -387,6 +520,7 @@ window.gestionarUnion = async (personaId) => {
                     </div>
                 </div>
             </div>`,
+        didOpen: () => activarPreviewSelect('u-pareja', 'u-pareja-preview', disponibles, unionesActivasMap),
         showCancelButton: true,
         confirmButtonText: 'Guardar unión',
         confirmButtonColor: '#e8b84b',
@@ -396,9 +530,10 @@ window.gestionarUnion = async (personaId) => {
 
     if (!isConfirmed || !form) return;
 
+    const parejaId = document.getElementById('u-pareja').value;
     const body = new FormData();
     body.append('persona_a_id', personaId);
-    body.append('persona_b_id', document.getElementById('u-pareja').value);
+    body.append('persona_b_id', parejaId);
     body.append('tipo', document.getElementById('u-tipo').value);
     body.append('estado', document.getElementById('u-estado').value);
     body.append('fecha_inicio', document.getElementById('u-inicio').value);
@@ -407,26 +542,85 @@ window.gestionarUnion = async (personaId) => {
     const r = await fetch(`${BASE}/api/uniones/guardar`, { method: 'POST', body });
     const d = await r.json();
     Toast.fire({ icon: d.codigo === 1 ? 'success' : 'error', title: d.mensaje });
-    if (d.codigo === 1) cargarFamilias();
+
+    if (d.codigo === 1) {
+        if (parejaId) {
+            await ofrecerVincularHijosCompartidos(personaId, parejaId, d.datos ? d.datos.id : null);
+        }
+        cargarFamilias();
+    }
 };
+
+// Si al crear la union, una de las dos personas ya tenia hijos que la
+// otra todavia no tiene vinculados (el caso de un progenitor soltero que
+// despues forma pareja), lo detecta y ofrece vincularlos de una vez, en
+// vez de tener que ir "a pie" a hacerlo persona por persona.
+async function ofrecerVincularHijosCompartidos(personaAId, personaBId, unionId) {
+    const [rHijosA, rHijosB] = await Promise.all([
+        fetch(`${BASE}/api/personas/hijos?id=${personaAId}`),
+        fetch(`${BASE}/api/personas/hijos?id=${personaBId}`),
+    ]);
+    const dHijosA = await rHijosA.json();
+    const dHijosB = await rHijosB.json();
+    const hijosA = dHijosA.codigo === 1 ? dHijosA.datos : [];
+    const hijosB = dHijosB.codigo === 1 ? dHijosB.datos : [];
+    const idsA = hijosA.map((h) => String(h.id));
+    const idsB = hijosB.map((h) => String(h.id));
+
+    const faltantes = [
+        ...hijosA.filter((h) => !idsB.includes(String(h.id))).map((h) => ({ ...h, progenitorFaltante: personaBId })),
+        ...hijosB.filter((h) => !idsA.includes(String(h.id))).map((h) => ({ ...h, progenitorFaltante: personaAId })),
+    ];
+
+    if (!faltantes.length) return;
+
+    const nombres = faltantes.map((h) => `${h.nombres} ${h.apellidos}`).join(', ');
+    const conf = await Swal.fire({
+        icon: 'question',
+        title: '¿Vincular también con el otro progenitor?',
+        html: `<p class="text-start">
+                 <strong>${nombres}</strong> ya está(n) vinculado/a(s) a solo uno de los dos.
+                 ¿Querés vincularlo/a(s) también con el otro, dentro de esta misma unión?
+               </p>`,
+        showCancelButton: true,
+        confirmButtonText: 'Sí, vincular',
+        cancelButtonText: 'No, gracias',
+        confirmButtonColor: '#e8b84b',
+    });
+
+    if (!conf.isConfirmed) return;
+
+    for (const h of faltantes) {
+        const body = new FormData();
+        body.append('hijo_id', h.id);
+        body.append('progenitor_id', h.progenitorFaltante);
+        body.append('union_id', unionId || '');
+        body.append('tipo_relacion', 'biologico');
+        await fetch(`${BASE}/api/filiaciones/guardar`, { method: 'POST', body });
+    }
+
+    Toast.fire({ icon: 'success', title: 'Vinculados correctamente' });
+}
 
 // ── Agregar hijo/a (filiación) ────────────────────────────────────────
 window.gestionarHijo = async (progenitorId) => {
     const todas = await obtenerTodas();
 
-    // Excluir a la propia persona, a los hijos ya vinculados, y a su(s) pareja(s)
-    const [rHijos, rParejas, rUniones] = await Promise.all([
-        fetch(`${BASE}/api/personas/hijos?id=${progenitorId}`),
-        fetch(`${BASE}/api/personas/parejas?id=${progenitorId}`),
+    // Excluir a TODA la red familiar de este progenitor (ya cubre hijos
+    // ya vinculados, parejas, hermanos, abuelos, etc.), y a quienes ya
+    // tienen 2+ progenitores registrados (ya no necesitan mas)
+    const [rRed, rUniones, rDosProgenitores] = await Promise.all([
+        fetch(`${BASE}/api/personas/red-familiar?id=${progenitorId}`),
         fetch(`${BASE}/api/personas/uniones?id=${progenitorId}`),
+        fetch(`${BASE}/api/personas/con-dos-progenitores`),
     ]);
-    const dHijos = await rHijos.json();
-    const dParejas = await rParejas.json();
+    const dRed = await rRed.json();
     const dUniones = await rUniones.json();
-    const yaVinculados = dHijos.codigo === 1 ? dHijos.datos.map((h) => h.id) : [];
-    const parejas = dParejas.codigo === 1 ? dParejas.datos.map((p) => p.id) : [];
+    const dDosProgenitores = await rDosProgenitores.json();
+    const redIds = dRed.codigo === 1 ? dRed.datos : [];
     const uniones = dUniones.codigo === 1 ? dUniones.datos : [];
-    const excluir = [progenitorId, ...yaVinculados, ...parejas];
+    const dosProgenitoresIds = dDosProgenitores.codigo === 1 ? dDosProgenitores.datos : [];
+    const excluir = [progenitorId, ...redIds, ...dosProgenitoresIds];
 
     const disponibles = todas.filter((p) => !excluir.map(String).includes(String(p.id)));
 
@@ -434,7 +628,7 @@ window.gestionarHijo = async (progenitorId) => {
         Swal.fire({
             icon: 'info',
             title: 'No hay personas disponibles',
-            text: 'Todas las personas registradas ya son hijos/as o parejas de esta persona. Creá una persona nueva primero si querés vincular a alguien más.',
+            text: 'Todas las personas registradas ya son parte de esta familia. Creá una persona nueva primero si querés vincular a alguien más.',
             confirmButtonColor: '#e8b84b',
         });
         return;
@@ -450,9 +644,10 @@ window.gestionarHijo = async (progenitorId) => {
         html: `
             <div class="text-start small">
                 <label class="form-label">Hijo/a (debe existir ya como persona)</label>
-                <select id="h-hijo" class="form-select form-select-sm mb-2">
+                <select id="h-hijo" class="form-select form-select-sm mb-1">
                     ${opcionesSelect(disponibles, [])}
                 </select>
+                <div id="h-hijo-preview"></div>
                 ${uniones.length ? `
                 <label class="form-label">Pertenece a esta unión</label>
                 <select id="h-union" class="form-select form-select-sm mb-2">
@@ -474,6 +669,7 @@ window.gestionarHijo = async (progenitorId) => {
                 </p>
             </div>`,
         didOpen: () => {
+            activarPreviewSelect('h-hijo', 'h-hijo-preview', disponibles);
             const selectUnion = document.getElementById('h-union');
             const aviso = document.getElementById('h-aviso-pareja');
             if (!selectUnion || !aviso || selectUnion.tagName !== 'SELECT') return;
@@ -545,17 +741,12 @@ window.fijarRaiz = async (id) => {
 window.gestionarProgenitor = async (hijoId) => {
     const todas = await obtenerTodas();
 
-    // Excluir a la propia persona, a sus propios hijos (no puede ser hijo
-    // de su propio hijo/a) y a quienes ya sean sus progenitores
-    const [rHijosPropios, rProgenitoresActuales] = await Promise.all([
-        fetch(`${BASE}/api/personas/hijos?id=${hijoId}`),
-        fetch(`${BASE}/api/personas/progenitores?id=${hijoId}`),
-    ]);
-    const dHijosPropios = await rHijosPropios.json();
-    const dProgenitoresActuales = await rProgenitoresActuales.json();
-    const hijosPropiosIds = dHijosPropios.codigo === 1 ? dHijosPropios.datos.map((h) => h.id) : [];
-    const progenitoresActualesIds = dProgenitoresActuales.codigo === 1 ? dProgenitoresActuales.datos.map((p) => p.id) : [];
-    const excluir = [hijoId, ...hijosPropiosIds, ...progenitoresActualesIds];
+    // Excluir a TODA la red familiar de esta persona (padres actuales,
+    // hijos propios, hermanos, abuelos, etc. en un solo llamado)
+    const rRed = await fetch(`${BASE}/api/personas/red-familiar?id=${hijoId}`);
+    const dRed = await rRed.json();
+    const redIds = dRed.codigo === 1 ? dRed.datos : [];
+    const excluir = [hijoId, ...redIds];
 
     const disponibles = todas.filter((p) => !excluir.map(String).includes(String(p.id)));
     if (!disponibles.length) {
@@ -573,9 +764,10 @@ window.gestionarProgenitor = async (hijoId) => {
         html: `
             <div class="text-start small">
                 <label class="form-label">Progenitor/a (padre o madre)</label>
-                <select id="pg-progenitor" class="form-select form-select-sm mb-2">
+                <select id="pg-progenitor" class="form-select form-select-sm mb-1">
                     ${opcionesSelect(disponibles, [])}
                 </select>
+                <div id="pg-progenitor-preview"></div>
                 <label class="form-label">Tipo de relación</label>
                 <select id="pg-tipo" class="form-select form-select-sm">
                     <option value="biologico">Biológico/a</option>
@@ -585,6 +777,7 @@ window.gestionarProgenitor = async (hijoId) => {
                     <option value="tutor">Bajo tutela</option>
                 </select>
             </div>`,
+        didOpen: () => activarPreviewSelect('pg-progenitor', 'pg-progenitor-preview', disponibles),
         showCancelButton: true,
         confirmButtonText: 'Continuar',
         confirmButtonColor: '#e8b84b',

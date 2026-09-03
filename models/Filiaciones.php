@@ -51,4 +51,29 @@ class Filiaciones extends ActiveRecord
         );
         return !empty($fila);
     }
+
+    /**
+     * Cuando se crea una union entre dos personas que YA tenian, cada uno
+     * por separado, filiaciones con el mismo hijo (cargadas antes de que
+     * existiera la union, asi que quedaron con union_id NULL), esto les
+     * asigna la union recien creada de forma retroactiva -- para que el
+     * hijo aparezca bien agrupado en el arbol sin tener que recargarlo a
+     * mano. Devuelve cuantas filas actualizo.
+     */
+    public static function backfillUnion(int $unionId, int $personaAId, int $personaBId): int
+    {
+        $stmt = self::getDB()->prepare(
+            "UPDATE filiaciones f
+             JOIN (
+                 SELECT f1.hijo_id
+                 FROM filiaciones f1
+                 JOIN filiaciones f2 ON f1.hijo_id = f2.hijo_id
+                 WHERE f1.progenitor_id = ? AND f2.progenitor_id = ?
+             ) compartidos ON f.hijo_id = compartidos.hijo_id
+             SET f.union_id = ?
+             WHERE f.union_id IS NULL AND f.progenitor_id IN (?, ?)"
+        );
+        $stmt->execute([$personaAId, $personaBId, $unionId, $personaAId, $personaBId]);
+        return $stmt->rowCount();
+    }
 }

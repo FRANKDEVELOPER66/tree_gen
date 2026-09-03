@@ -196,6 +196,25 @@ class PersonasController
         responderJSON(1, '', Personas::familias());
     }
 
+    /** API: toda la red familiar conectada a una persona (para excluirla completa de selectores de pareja/hijo) */
+    public static function redFamiliarAPI()
+    {
+        $id = (int) ($_GET['id'] ?? 0);
+        responderJSON(1, '', Personas::redFamiliar($id));
+    }
+
+    /** API: IDs de quienes ya tienen 2+ progenitores (para excluirlos de "Vincular hijo/a") */
+    public static function conDosProgenitoresAPI()
+    {
+        responderJSON(1, '', Personas::conDosProgenitores());
+    }
+
+    /** API: mapa persona_id -> pareja actual, para quienes tienen una union activa (aviso en "Agregar union") */
+    public static function unionesActivasAPI()
+    {
+        responderJSON(1, '', Personas::unionesActivasPorPersona());
+    }
+
     /** API: uniones de una persona con datos de pareja (para elegir a que union pertenece un hijo) */
     public static function unionesAPI()
     {

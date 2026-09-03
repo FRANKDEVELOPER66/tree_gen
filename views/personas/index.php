@@ -209,7 +209,8 @@
 
     .persona-acciones {
         display: flex;
-        gap: .5rem;
+        gap: .4rem;
+        flex-wrap: wrap;
     }
 
     .btn-editar {
@@ -229,39 +230,10 @@
         background: rgba(232, 184, 75, .1);
     }
 
-    .dropdown-mas .btn-mas {
-        background: transparent;
-        border: 1px solid #4a7060;
-        color: #c8d6cc;
-        border-radius: 8px;
-        padding: .35rem .75rem;
-        font-size: .8rem;
-        cursor: pointer;
-    }
-
-    .dropdown-mas .btn-mas:hover {
-        border-color: #c9a24b;
-        color: #e8eaf0;
-    }
-
-    .dropdown-menu-dark {
-        background: #242837;
-        border: 1px solid #2e3347;
-    }
-
-    .dropdown-menu-dark .dropdown-item {
-        color: #e8eaf0;
-    }
-
-    .dropdown-menu-dark .dropdown-item:hover {
-        background: rgba(232, 184, 75, .1);
-        color: #e8b84b;
-    }
-
-    .dropdown-menu-dark .dropdown-item.text-danger:hover {
-        background: rgba(224, 82, 82, .1);
-        color: #e05252 !important;
-    }
+    /* Los botones de acción secundaria (unión, hijo, raíz, eliminar, ficha)
+       usan clases reales de Bootstrap (btn-outline-*) directamente en el
+       JS -- no necesitan CSS propio. Todos visibles siempre, sin menú
+       desplegable, para que nunca queden tapados por otras tarjetas. */
 
     /* La lista de integrantes del modal "ver familia" usa componentes
        reales de Bootstrap (list-group, badge, btn-outline-secondary) —

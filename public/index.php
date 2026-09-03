@@ -48,6 +48,9 @@ $router->get('/api/personas/parejas', [PersonasController::class, 'parejasAPI'])
 $router->get('/api/personas/uniones', [PersonasController::class, 'unionesAPI']);
 $router->get('/api/personas/hermanos', [PersonasController::class, 'hermanosAPI']);
 $router->get('/api/personas/progenitores', [PersonasController::class, 'progenitoresAPI']);
+$router->get('/api/personas/red-familiar', [PersonasController::class, 'redFamiliarAPI']);
+$router->get('/api/personas/con-dos-progenitores', [PersonasController::class, 'conDosProgenitoresAPI']);
+$router->get('/api/personas/uniones-activas', [PersonasController::class, 'unionesActivasAPI']);
 
 $router->get('/api/personas/familias', [PersonasController::class, 'familiasAPI']);
 

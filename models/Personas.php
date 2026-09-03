@@ -191,8 +191,8 @@ class Personas extends ActiveRecord
 
         $uniones = self::fetchArray(
             "SELECT u.id AS union_id, u.persona_a_id, u.persona_b_id,
-                    pa.nombres AS a_nombres, pa.apellidos AS a_apellidos, pa.foto_perfil AS a_foto,
-                    pb.nombres AS b_nombres, pb.apellidos AS b_apellidos, pb.foto_perfil AS b_foto
+                    pa.nombres AS a_nombres, pa.apellidos AS a_apellidos, pa.foto_perfil AS a_foto, pa.genero AS a_genero,
+                    pb.nombres AS b_nombres, pb.apellidos AS b_apellidos, pb.foto_perfil AS b_foto, pb.genero AS b_genero
              FROM uniones u
              JOIN personas pa ON pa.id = u.persona_a_id
              LEFT JOIN personas pb ON pb.id = u.persona_b_id"
@@ -211,8 +211,17 @@ class Personas extends ActiveRecord
         // 1) Una familia por cada union, con sus hijos (por union_id)
         foreach ($uniones as $u) {
             $unionId = (int) $u['union_id'];
-            $apA = $primerApellido($u['a_apellidos']);
-            $apB = $u['persona_b_id'] ? $primerApellido($u['b_apellidos']) : null;
+
+            // Nombre de familia: apellido del hombre primero (convencion
+            // cultural), sea o no persona_a en la union. Si no hay pareja
+            // o los generos no distinguen, se usa el orden original.
+            if ($u['persona_b_id'] && $u['a_genero'] === 'femenino' && $u['b_genero'] === 'masculino') {
+                $apPrimero = $primerApellido($u['b_apellidos']);
+                $apSegundo = $primerApellido($u['a_apellidos']);
+            } else {
+                $apPrimero = $primerApellido($u['a_apellidos']);
+                $apSegundo = $u['persona_b_id'] ? $primerApellido($u['b_apellidos']) : null;
+            }
 
             $miembros = [[
                 'id' => (int) $u['persona_a_id'],
@@ -252,7 +261,7 @@ class Personas extends ActiveRecord
 
             $familias[] = [
                 'id' => 'union_' . $unionId,
-                'nombre' => 'Familia ' . trim($apA . ' ' . ($apB ?? '')),
+                'nombre' => 'Familia ' . trim($apPrimero . ' ' . ($apSegundo ?? '')),
                 'miembros' => $miembros,
             ];
         }
@@ -274,7 +283,11 @@ class Personas extends ActiveRecord
 
             foreach ($familias as &$fam) {
                 foreach ($fam['miembros'] as $m) {
-                    if ($m['id'] === $progenitorId) {
+                    // Solo cuenta si el progenitor aparece ahi como cabeza
+                    // de familia (Conyuge/Progenitor-a) -- si aparece como
+                    // "Hijo/a", esa es la familia DONDE NACIO, no la suya
+                    // propia, y no hay que meter a sus propios hijos ahi.
+                    if ($m['id'] === $progenitorId && $m['rol'] !== 'Hijo/a') {
                         $familiaExistente = &$fam;
                         break 2;
                     }
@@ -339,5 +352,85 @@ class Personas extends ActiveRecord
         }
 
         return ['familias' => $familias, 'sin_asociar' => $sinAsociar];
+    }
+
+    /**
+     * Recorre TODA la red familiar conectada a esta persona: progenitores,
+     * hijos, y parejas, en cascada (asi de padres se llega a abuelos, de
+     * abuelos a tios, de tios a primos, etc). Se usa para no ofrecer como
+     * pareja/hijo a alguien que ya es parte de la familia de esta persona,
+     * sin importar el grado de parentesco.
+     */
+    public static function redFamiliar(int $personaId): array
+    {
+        $visitados = [$personaId => true];
+        $cola = [$personaId];
+
+        while ($cola) {
+            $actual = array_shift($cola);
+
+            $vecinos = array_merge(
+                array_column(self::progenitores($actual), 'id'),
+                array_column(self::hijos($actual), 'id'),
+                array_column(self::parejas($actual), 'id')
+            );
+
+            foreach ($vecinos as $vecinoId) {
+                $vecinoId = (int) $vecinoId;
+                if (!isset($visitados[$vecinoId])) {
+                    $visitados[$vecinoId] = true;
+                    $cola[] = $vecinoId;
+                }
+            }
+        }
+
+        unset($visitados[$personaId]);
+        return array_keys($visitados);
+    }
+
+    /** IDs de quienes ya tienen 2 o mas progenitores registrados (para excluirlos de "Vincular hijo/a") */
+    public static function conDosProgenitores(): array
+    {
+        $filas = self::fetchArray(
+            'SELECT hijo_id FROM filiaciones GROUP BY hijo_id HAVING COUNT(*) >= 2'
+        );
+        return array_map(fn($f) => (int) $f['hijo_id'], $filas);
+    }
+
+    /**
+     * Mapa persona_id => datos de su pareja, para quienes tienen HOY una
+     * union con estado 'activa'. Se usa para avisar (no bloquear) si en
+     * "Agregar union" se elige a alguien que ya esta activamente
+     * comprometido/a con otra persona.
+     */
+    public static function unionesActivasPorPersona(): array
+    {
+        $filas = self::fetchArray(
+            "SELECT u.persona_a_id, u.persona_b_id,
+                    pa.nombres AS a_nombres, pa.apellidos AS a_apellidos,
+                    pb.nombres AS b_nombres, pb.apellidos AS b_apellidos
+             FROM uniones u
+             JOIN personas pa ON pa.id = u.persona_a_id
+             LEFT JOIN personas pb ON pb.id = u.persona_b_id
+             WHERE u.estado = 'activa'"
+        );
+
+        $mapa = [];
+        foreach ($filas as $f) {
+            if (!$f['persona_b_id']) {
+                continue;
+            }
+            $mapa[(int) $f['persona_a_id']] = [
+                'id' => (int) $f['persona_b_id'],
+                'nombres' => $f['b_nombres'],
+                'apellidos' => $f['b_apellidos'],
+            ];
+            $mapa[(int) $f['persona_b_id']] = [
+                'id' => (int) $f['persona_a_id'],
+                'nombres' => $f['a_nombres'],
+                'apellidos' => $f['a_apellidos'],
+            ];
+        }
+        return $mapa;
     }
 }

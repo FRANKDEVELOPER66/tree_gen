@@ -4,6 +4,7 @@ namespace Controllers;
 
 use Exception;
 use Model\Uniones;
+use Model\Filiaciones;
 
 class UnionesController
 {
@@ -16,8 +17,16 @@ class UnionesController
 
             $union = new Uniones($_POST);
             $resultado = $union->crear();
+            $unionId = (int) $resultado['id'];
 
-            responderJSON(1, 'Unión registrada correctamente', ['id' => $resultado['id']]);
+            // Si ambas personas ya tenian, cada una por separado, una
+            // filiacion con el mismo hijo (cargada antes de que existiera
+            // esta union), se la asignamos de forma retroactiva.
+            if (!empty($_POST['persona_b_id'])) {
+                Filiaciones::backfillUnion($unionId, (int) $_POST['persona_a_id'], (int) $_POST['persona_b_id']);
+            }
+
+            responderJSON(1, 'Unión registrada correctamente', ['id' => $unionId]);
         } catch (Exception $e) {
             responderJSON(0, $e->getMessage());
         }
