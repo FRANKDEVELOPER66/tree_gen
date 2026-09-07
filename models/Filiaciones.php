@@ -52,6 +52,16 @@ class Filiaciones extends ActiveRecord
         return !empty($fila);
     }
 
+    /** Busca la filiacion existente entre un hijo y un progenitor especificos (o null si no existe) */
+    public static function buscar(int $hijoId, int $progenitorId): ?self
+    {
+        $fila = self::fetchFirst(
+            'SELECT * FROM filiaciones WHERE hijo_id = ? AND progenitor_id = ? LIMIT 1',
+            [$hijoId, $progenitorId]
+        );
+        return $fila ? new self($fila) : null;
+    }
+
     /**
      * Cuando se crea una union entre dos personas que YA tenian, cada uno
      * por separado, filiaciones con el mismo hijo (cargadas antes de que

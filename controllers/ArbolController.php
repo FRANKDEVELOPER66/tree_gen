@@ -61,6 +61,7 @@ class ArbolController
             'persona' => $persona->atributos() + ['id' => $persona->id],
             'nucleos' => $nucleos,
             'progenitores' => Personas::progenitores($personaId),
+            'hijosSueltos' => Personas::hijosSinUnion($personaId),
         ]);
     }
 

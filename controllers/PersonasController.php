@@ -203,6 +203,13 @@ class PersonasController
         responderJSON(1, '', Personas::redFamiliar($id));
     }
 
+    /** API: solo ascendientes/descendientes directos (para excluirlos de "Vincular como hijo/a de...") */
+    public static function lineaDirectaAPI()
+    {
+        $id = (int) ($_GET['id'] ?? 0);
+        responderJSON(1, '', Personas::lineaDirecta($id));
+    }
+
     /** API: IDs de quienes ya tienen 2+ progenitores (para excluirlos de "Vincular hijo/a") */
     public static function conDosProgenitoresAPI()
     {

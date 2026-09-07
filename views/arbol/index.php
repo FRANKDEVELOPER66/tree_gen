@@ -49,13 +49,22 @@
     }
 
     /* ── Migas de pan ─────────────────────────────────────────────────────── */
-    .migas {
+    .migas-fila {
         position: relative;
         z-index: 1;
         display: flex;
         align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        padding: .5rem 1.75rem .5rem 0;
+        flex-wrap: wrap;
+    }
+
+    .migas {
+        display: flex;
+        align-items: center;
         gap: .4rem;
-        padding: .85rem 1.75rem;
+        padding: .85rem 0 .85rem 1.75rem;
         flex-wrap: wrap;
         font-family: 'Rajdhani', sans-serif;
         font-weight: 600;
@@ -83,6 +92,27 @@
 
     .migas .sep {
         color: #b7a878;
+    }
+
+    .btn-cambiar-raiz {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        background: #fff;
+        border: 1px solid #c9bb92;
+        border-radius: 20px;
+        padding: .4rem .9rem;
+        font-family: 'Inter', sans-serif;
+        font-size: .8rem;
+        color: #4c7a5d;
+        cursor: pointer;
+        transition: background .15s, border-color .15s;
+    }
+
+    .btn-cambiar-raiz:hover {
+        background: #f7f0dc;
+        border-color: #e8b84b;
     }
 
     /* ── Lienzo ───────────────────────────────────────────────────────────── */
@@ -308,32 +338,46 @@
 
     .pestanas-uniones {
         display: flex;
-        gap: .5rem;
+        gap: .6rem;
         flex-wrap: wrap;
         justify-content: center;
     }
 
     .pestana-union {
-        padding: .35rem .9rem;
-        border: 1px solid #c9bb92;
+        padding: .4rem 1rem;
+        border: 1.5px solid #8a7a52;
         border-radius: 20px;
-        font-size: .78rem;
-        color: #6b5a38;
+        font-size: .8rem;
+        font-weight: 600;
+        color: #4a3f28;
         cursor: pointer;
-        background: rgba(255, 255, 255, .4);
+        background: #f7f0dc;
+        transition: all .15s;
+    }
+
+    .pestana-union:hover {
+        border-color: #4c7a5d;
+        background: #eee4c8;
     }
 
     .pestana-union.activa {
-        border-color: #c9a24b;
-        color: #2e4a3a;
-        background: rgba(201, 162, 75, .15);
-        font-weight: 600;
+        border-color: #4c7a5d;
+        border-width: 2px;
+        color: #fff;
+        background: #4c7a5d;
+        font-weight: 700;
+        box-shadow: 0 2px 8px rgba(76, 122, 93, .3);
     }
 
     .pestana-union .estado-badge {
-        opacity: .7;
+        opacity: .85;
         font-style: italic;
-        margin-left: .3rem;
+        margin-left: .35rem;
+    }
+
+    .pestana-union.activa .estado-badge {
+        color: #d9ead9;
+        opacity: 1;
     }
 
     .linea-descendencia {
@@ -356,6 +400,17 @@
         font-style: italic;
         font-size: 1rem;
         padding: 1rem 0;
+    }
+
+    .seccion-hijos-sueltos-titulo {
+        font-family: 'Inter', sans-serif;
+        font-size: .72rem;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: #8a7a52;
+        margin-top: 1.25rem;
+        text-align: center;
+        width: 100%;
     }
 
     .etiqueta-filiacion {
@@ -558,7 +613,12 @@
     </svg>
 </div>
 
-<div class="migas" id="migas"></div>
+<div class="migas-fila">
+    <div class="migas" id="migas"></div>
+    <button type="button" class="btn-cambiar-raiz" onclick="cambiarRaiz()">
+        <i class="bi bi-search"></i> Ver desde otra persona
+    </button>
+</div>
 
 <main class="lienzo" id="lienzo" data-base="<?= urlBase() ?>">
     <div class="cargando">Abriendo el registro familiar…</div>

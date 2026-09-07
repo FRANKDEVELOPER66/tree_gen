@@ -195,6 +195,112 @@
         margin-bottom: .75rem;
     }
 
+    /* ── Tarjeta de confirmación al elegir a alguien en el buscador ──────── */
+    @keyframes previewFotoAparece {
+        0% {
+            opacity: 0;
+            transform: scale(.15) rotate(-14deg);
+        }
+
+        55% {
+            opacity: 1;
+            transform: scale(1.28) rotate(4deg);
+        }
+
+        75% {
+            transform: scale(.93) rotate(-1deg);
+        }
+
+        100% {
+            opacity: 1;
+            transform: scale(1) rotate(0deg);
+        }
+    }
+
+    @keyframes previewAnilloPulso {
+        0% {
+            box-shadow: 0 0 0 0 rgba(232, 184, 75, .55);
+        }
+
+        70% {
+            box-shadow: 0 0 0 10px rgba(232, 184, 75, 0);
+        }
+
+        100% {
+            box-shadow: 0 0 0 0 rgba(232, 184, 75, 0);
+        }
+    }
+
+    @keyframes previewTextoAparece {
+        from {
+            opacity: 0;
+            transform: translateX(-8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+    .preview-persona-card {
+        display: flex;
+        align-items: center;
+        gap: .85rem;
+        background: #f7f0dc;
+        border: 1px solid #c9bb92;
+        border-radius: 10px;
+        padding: .65rem .85rem;
+        margin: .3rem 0 .75rem;
+    }
+
+    .preview-persona-avatar {
+        width: 62px;
+        height: 62px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: #eee2c6;
+        border: 2px solid #e8b84b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        animation: previewFotoAparece .62s cubic-bezier(.34, 1.56, .64, 1),
+            previewAnilloPulso 1.1s ease-out .5s;
+    }
+
+    .preview-persona-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .preview-persona-avatar span {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        color: #a06a2e;
+        font-size: 1.4rem;
+    }
+
+    .preview-persona-texto {
+        text-align: left;
+        animation: previewTextoAparece .4s ease .18s both;
+    }
+
+    .preview-persona-nombre {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 1.15rem;
+        color: #2e2716;
+        line-height: 1.2;
+    }
+
+    .preview-persona-fecha {
+        color: #8a7a52;
+        font-size: .78rem;
+        margin-top: .1rem;
+    }
+
     .sin-asociar-badge {
         display: inline-block;
         font-size: .62rem;

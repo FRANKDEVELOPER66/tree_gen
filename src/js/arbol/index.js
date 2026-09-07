@@ -1,6 +1,4 @@
 import Swal from 'sweetalert2';
-import { Dropdown } from 'bootstrap';
-
 
 const BASE = document.querySelector('[data-base]')?.dataset.base ?? '';
 
@@ -103,7 +101,7 @@ async function cargarNucleo(personaId, { agregarAPila = true } = {}) {
         return;
     }
 
-    const { persona, nucleos, progenitores } = data.datos;
+    const { persona, nucleos, progenitores, hijosSueltos } = data.datos;
 
     if (agregarAPila) {
         const posExistente = pila.findIndex((p) => p.id === persona.id);
@@ -116,7 +114,7 @@ async function cargarNucleo(personaId, { agregarAPila = true } = {}) {
 
     unionActivaIndex = 0;
     pintarMigas();
-    pintarNucleo(persona, nucleos, progenitores);
+    pintarNucleo(persona, nucleos, progenitores, hijosSueltos || []);
 }
 
 function pintarMigas() {
@@ -133,7 +131,7 @@ function pintarMigas() {
         .join('');
 }
 
-function pintarNucleo(persona, nucleos, progenitores) {
+function pintarNucleo(persona, nucleos, progenitores, hijosSueltos = []) {
     const nucleoActivo = nucleos[unionActivaIndex] || null;
     const hijos = nucleoActivo ? nucleoActivo.hijos : [];
 
@@ -179,9 +177,27 @@ function pintarNucleo(persona, nucleos, progenitores) {
                 etiqueta: ETIQUETAS_FILIACION[h.tipo_relacion] || null,
             })).join('');
             html += `</div>`;
-        } else {
+        } else if (!hijosSueltos.length) {
             html += `<div class="sin-hijos">Sin descendencia registrada</div>`;
         }
+
+        if (hijosSueltos.length) {
+            html += `<div class="seccion-hijos-sueltos-titulo">Otros/as hijos/as (sin pareja registrada)</div>`;
+            html += `<div class="fila-hijos">`;
+            html += hijosSueltos.map((h) => retratoHTML(h, {
+                rol: rolHijo(h),
+                etiqueta: ETIQUETAS_FILIACION[h.tipo_relacion] || null,
+            })).join('');
+            html += `</div>`;
+        }
+    } else if (hijosSueltos.length) {
+        html += `<div class="linea-descendencia"></div>`;
+        html += `<div class="fila-hijos">`;
+        html += hijosSueltos.map((h) => retratoHTML(h, {
+            rol: rolHijo(h),
+            etiqueta: ETIQUETAS_FILIACION[h.tipo_relacion] || null,
+        })).join('');
+        html += `</div>`;
     } else {
         html += `<div class="sin-hijos">Sin unión ni descendencia registrada</div>`;
     }
@@ -191,10 +207,10 @@ function pintarNucleo(persona, nucleos, progenitores) {
     void lienzo.offsetWidth;
     lienzo.classList.add('entrando');
 
-    activarInteracciones(persona, nucleos, progenitores);
+    activarInteracciones(persona, nucleos, progenitores, hijosSueltos);
 }
 
-function activarInteracciones(persona, nucleos, progenitores) {
+function activarInteracciones(persona, nucleos, progenitores, hijosSueltos) {
     // Click en el retrato (fuera del icono de ficha) -> navega/hace zoom a esa persona
     lienzo.querySelectorAll('.retrato-persona').forEach((el) => {
         el.addEventListener('click', (ev) => {
@@ -218,7 +234,7 @@ function activarInteracciones(persona, nucleos, progenitores) {
     lienzo.querySelectorAll('.pestana-union').forEach((el) => {
         el.addEventListener('click', () => {
             unionActivaIndex = Number(el.dataset.index);
-            pintarNucleo(persona, nucleos, progenitores);
+            pintarNucleo(persona, nucleos, progenitores, hijosSueltos);
         });
     });
 }
@@ -285,6 +301,78 @@ async function abrirDetalle(personaId) {
 function cerrarDetalle() {
     panelDetalle.classList.remove('abierto');
 }
+
+// ── Cambiar la raiz del arbol (buscador de persona) ──────────────────────
+window.cambiarRaiz = async () => {
+    const resp = await fetch(`${BASE}/api/personas/listar`);
+    const data = await resp.json();
+    const todas = data.codigo === 1 ? data.datos : [];
+
+    const { isConfirmed } = await Swal.fire({
+        title: 'Ver árbol desde...',
+        html: `
+            <div class="text-start small">
+                <input type="text" id="raiz-buscar" class="form-control form-control-sm mb-1"
+                       placeholder="Escribí un nombre para buscar…" autocomplete="off">
+                <input type="hidden" id="raiz-persona">
+                <div id="raiz-resultados" class="list-group" style="max-height:220px;overflow-y:auto;display:none;"></div>
+            </div>`,
+        didOpen: () => {
+            const inputBuscar = document.getElementById('raiz-buscar');
+            const inputHidden = document.getElementById('raiz-persona');
+            const resultados = document.getElementById('raiz-resultados');
+            const normalizar = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+            inputBuscar.addEventListener('input', () => {
+                inputHidden.value = '';
+                const q = normalizar(inputBuscar.value.trim());
+                if (!q) {
+                    resultados.innerHTML = '';
+                    resultados.style.display = 'none';
+                    return;
+                }
+                const coincidencias = todas
+                    .filter((p) => normalizar(`${p.nombres} ${p.apellidos}`).includes(q))
+                    .slice(0, 8);
+                resultados.innerHTML = coincidencias.length
+                    ? coincidencias.map((p) =>
+                        `<button type="button" class="list-group-item list-group-item-action small" data-id="${p.id}">${p.nombres} ${p.apellidos}</button>`
+                    ).join('')
+                    : '<div class="list-group-item small text-muted">Sin resultados</div>';
+                resultados.style.display = '';
+                resultados.querySelectorAll('[data-id]').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        inputHidden.value = btn.dataset.id;
+                        inputBuscar.value = btn.textContent;
+                        resultados.innerHTML = '';
+                        resultados.style.display = 'none';
+                    });
+                });
+            });
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Ver desde acá',
+        confirmButtonColor: '#e8b84b',
+        width: '460px',
+        preConfirm: () => {
+            if (!document.getElementById('raiz-persona').value) {
+                Swal.showValidationMessage('Selecciona a una persona de la lista');
+                return false;
+            }
+            return true;
+        },
+    });
+
+    if (!isConfirmed) return;
+
+    const personaId = Number(document.getElementById('raiz-persona').value);
+    const body = new FormData();
+    body.append('persona_id', personaId);
+    await fetch(`${BASE}/api/arbol/raiz`, { method: 'POST', body });
+
+    pila = []; // arranca de cero, sin arrastrar las migas de la vista anterior
+    cargarNucleo(personaId);
+};
 
 // ── Arranque ────────────────────────────────────────────────────────────────
 async function iniciar() {

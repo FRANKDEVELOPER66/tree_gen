@@ -53,6 +53,10 @@ $router->get('/api/personas/con-dos-progenitores', [PersonasController::class, '
 $router->get('/api/personas/uniones-activas', [PersonasController::class, 'unionesActivasAPI']);
 
 $router->get('/api/personas/familias', [PersonasController::class, 'familiasAPI']);
+$router->post('/api/filiaciones/asignar-union', [FiliacionesController::class, 'asignarUnionAPI']);
 
+
+
+$router->get('/api/personas/linea-directa', [PersonasController::class, 'lineaDirectaAPI']);
 // Comprueba y valida las rutas, que existan y les asigna las funciones del Controlador
 $router->comprobarRutas();

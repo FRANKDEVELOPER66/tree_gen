@@ -76,7 +76,7 @@ class Personas extends ActiveRecord
     public static function progenitores(int $personaId): array
     {
         return self::fetchArray(
-            "SELECT p.id, p.nombres, p.apellidos, p.foto_perfil, f.tipo_relacion
+            "SELECT p.id, p.nombres, p.apellidos, p.foto_perfil, f.tipo_relacion, f.id AS filiacion_id
              FROM filiaciones f
              JOIN personas p ON p.id = f.progenitor_id
              WHERE f.hijo_id = ?",
@@ -126,6 +126,25 @@ class Personas extends ActiveRecord
              FROM filiaciones f
              JOIN personas p ON p.id = f.hijo_id
              WHERE f.progenitor_id = ?",
+            [$progenitorId]
+        );
+    }
+
+    /**
+     * Hijos vinculados a esta persona SIN ninguna union asignada (union_id
+     * NULL) -- el caso de un progenitor soltero, o con pareja pero esa
+     * pareja todavia no esta cargada en el sistema. El arbol necesita
+     * esto aparte, porque su recorrido normal solo encuentra hijos a
+     * traves de una union registrada.
+     */
+    public static function hijosSinUnion(int $progenitorId): array
+    {
+        return self::fetchArray(
+            "SELECT p.id, p.nombres, p.apellidos, p.foto_perfil, p.genero,
+                    p.fecha_nacimiento, p.fecha_fallecimiento, f.tipo_relacion
+             FROM filiaciones f
+             JOIN personas p ON p.id = f.hijo_id
+             WHERE f.progenitor_id = ? AND f.union_id IS NULL",
             [$progenitorId]
         );
     }
@@ -361,38 +380,98 @@ class Personas extends ActiveRecord
      * pareja/hijo a alguien que ya es parte de la familia de esta persona,
      * sin importar el grado de parentesco.
      */
+    /**
+     * Recorre la LINEA DE SANGRE conectada a esta persona: progenitores e
+     * hijos, en cascada (asi de padres se llega a abuelos, de abuelos a
+     * tios -por sus hijos-, de tios a primos, etc). A proposito NO
+     * recorre parejas -- un padrastro/madrastra (la pareja de un
+     * progenitor) no es pariente de sangre, y debe poder elegirse como
+     * segundo progenitor o como pareja de otra persona sin problema.
+     */
+    /**
+     * Recorre la LINEA DE SANGRE conectada a esta persona: progenitores e
+     * hijos, en cascada, PERO SOLO por vinculos biologico/adoptivo (asi de
+     * padres se llega a abuelos, de abuelos a tios, de tios a primos,
+     * etc). A proposito no cuenta parejas, ni vinculos de padrastro/
+     * madrastra/tutor -- un padrastro no es pariente de sangre, y no debe
+     * bloquear que se lo elija como segundo progenitor o como pareja de
+     * otra persona, ni que el recorrido "salte" a traves de el hacia
+     * gente que tampoco es de sangre.
+     */
+    /**
+     * Todos los parientes de SANGRE de esta persona, calculado en dos
+     * pasadas para evitar "cruzar" por matrimonio hacia familias ajenas:
+     *
+     * 1) Ascendientes: solo subiendo (progenitor de progenitor...). Esto
+     *    nunca puede agarrar a alguien que no sea sangre.
+     * 2) Para CADA ascendiente (incluida la persona misma), todos SUS
+     *    descendientes: solo bajando (hijo de hijo...). Esto encuentra
+     *    hermanos, medios hermanos, tios, primos, sobrinos -- pero SIN
+     *    nunca subir por el "otro" progenitor de un hijo compartido, que
+     *    es justamente lo que antes hacia que la pareja de un tio (que
+     *    se caso hacia adentro de la familia) arrastrara a TODA su propia
+     *    familia de sangre como si fuera parte de esta.
+     */
     public static function redFamiliar(int $personaId): array
     {
-        $visitados = [$personaId => true];
+        // 1) Ascendientes (incluida la propia persona)
+        $ascendientes = [$personaId => true];
         $cola = [$personaId];
-
         while ($cola) {
             $actual = array_shift($cola);
-
-            $vecinos = array_merge(
-                array_column(self::progenitores($actual), 'id'),
-                array_column(self::hijos($actual), 'id'),
-                array_column(self::parejas($actual), 'id')
+            $progenitores = self::fetchArray(
+                "SELECT progenitor_id AS id FROM filiaciones WHERE hijo_id = ? AND tipo_relacion IN ('biologico', 'adoptivo')",
+                [$actual]
             );
-
-            foreach ($vecinos as $vecinoId) {
-                $vecinoId = (int) $vecinoId;
-                if (!isset($visitados[$vecinoId])) {
-                    $visitados[$vecinoId] = true;
-                    $cola[] = $vecinoId;
+            foreach ($progenitores as $p) {
+                $pid = (int) $p['id'];
+                if (!isset($ascendientes[$pid])) {
+                    $ascendientes[$pid] = true;
+                    $cola[] = $pid;
                 }
             }
         }
 
-        unset($visitados[$personaId]);
-        return array_keys($visitados);
+        // 2) Descendientes de cada ascendiente (solo bajando, nunca
+        //    subiendo por el otro progenitor de un hijo)
+        $sangre = [];
+        foreach (array_keys($ascendientes) as $ancestroId) {
+            $cola = [$ancestroId];
+            while ($cola) {
+                $actual = array_shift($cola);
+                $sangre[$actual] = true;
+
+                $hijos = self::fetchArray(
+                    "SELECT hijo_id AS id FROM filiaciones WHERE progenitor_id = ? AND tipo_relacion IN ('biologico', 'adoptivo')",
+                    [$actual]
+                );
+                foreach ($hijos as $h) {
+                    $hid = (int) $h['id'];
+                    if (!isset($sangre[$hid])) {
+                        $cola[] = $hid;
+                    }
+                }
+            }
+        }
+
+        unset($sangre[$personaId]);
+        return array_keys($sangre);
     }
 
     /** IDs de quienes ya tienen 2 o mas progenitores registrados (para excluirlos de "Vincular hijo/a") */
+    /**
+     * IDs de quienes ya tienen 2 progenitores de tipo biologico/adoptivo
+     * (el "cupo" real de padres, que es de maximo 2). Los vinculos de
+     * padrastro/madrastra/tutor NO cuentan para este cupo -- alguien
+     * puede tener un padrastro Y despues seguir necesitando vincular a
+     * su padre biologico real si aparece mas adelante.
+     */
     public static function conDosProgenitores(): array
     {
         $filas = self::fetchArray(
-            'SELECT hijo_id FROM filiaciones GROUP BY hijo_id HAVING COUNT(*) >= 2'
+            "SELECT hijo_id FROM filiaciones
+             WHERE tipo_relacion IN ('biologico', 'adoptivo')
+             GROUP BY hijo_id HAVING COUNT(*) >= 2"
         );
         return array_map(fn($f) => (int) $f['hijo_id'], $filas);
     }
@@ -432,5 +511,53 @@ class Personas extends ActiveRecord
             ];
         }
         return $mapa;
+    }
+
+    /**
+     * Solo ascendientes y descendientes DIRECTOS (padres, abuelos, hijos,
+     * nietos...), sin saltar por hermanos hacia SUS otros progenitores.
+     * Se usa para "Vincular como hijo/a de..." -- ahi no hay que excluir
+     * a la pareja de un hermano/a (ej. un padrastro que es progenitor
+     * biologico de un medio hermano), porque justamente puede ser un
+     * candidato valido como tu propio progenitor no biologico.
+     */
+    public static function lineaDirecta(int $personaId): array
+    {
+        $ids = [];
+
+        $cola = [$personaId];
+        while ($cola) {
+            $actual = array_shift($cola);
+            $progenitores = self::fetchArray(
+                "SELECT progenitor_id AS id FROM filiaciones WHERE hijo_id = ? AND tipo_relacion IN ('biologico', 'adoptivo')",
+                [$actual]
+            );
+            foreach ($progenitores as $p) {
+                $pid = (int) $p['id'];
+                if (!isset($ids[$pid])) {
+                    $ids[$pid] = true;
+                    $cola[] = $pid;
+                }
+            }
+        }
+
+        $cola = [$personaId];
+        while ($cola) {
+            $actual = array_shift($cola);
+            $hijos = self::fetchArray(
+                "SELECT hijo_id AS id FROM filiaciones WHERE progenitor_id = ? AND tipo_relacion IN ('biologico', 'adoptivo')",
+                [$actual]
+            );
+            foreach ($hijos as $h) {
+                $hid = (int) $h['id'];
+                if (!isset($ids[$hid])) {
+                    $ids[$hid] = true;
+                    $cola[] = $hid;
+                }
+            }
+        }
+
+        unset($ids[$personaId]);
+        return array_keys($ids);
     }
 }
