@@ -34,6 +34,9 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/tree_gen/arbol"><i class="bi bi-diagram-3-fill me-2"></i>ARBOL</a>
                     </li>
+                     <li class="nav-item">
+                        <a class="nav-link" href="/tree_gen/arbol"><i class="bi bi-diagram-3-fill me-2"></i>RELACIONAR ARBOL</a>
+                    </li>
                 </ul>
 
                 <div class="col-lg-1 d-grid mb-lg-0 mb-2">

@@ -1,4 +1,6 @@
 import Swal from 'sweetalert2';
+import { Dropdown } from "bootstrap";
+
 
 const BASE = document.querySelector('[data-base]')?.dataset.base ?? '';
 

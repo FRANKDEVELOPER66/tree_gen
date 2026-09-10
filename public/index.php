@@ -7,6 +7,7 @@ use Controllers\ArbolController;
 use Controllers\PersonasController;
 use Controllers\UnionesController;
 use Controllers\FiliacionesController;
+use Controllers\OrganigramaController;
 
 $router = new Router();
 $router->setBaseURL('/' . $_ENV['APP_NAME']);
@@ -54,6 +55,13 @@ $router->get('/api/personas/uniones-activas', [PersonasController::class, 'union
 
 $router->get('/api/personas/familias', [PersonasController::class, 'familiasAPI']);
 $router->post('/api/filiaciones/asignar-union', [FiliacionesController::class, 'asignarUnionAPI']);
+
+// ── Página del organigrama ─────────────────────────────────────────────
+$router->get('/organigrama', [OrganigramaController::class, 'index']);
+
+// ── API: organigrama ────────────────────────────────────────────────────
+$router->get('/api/organigrama/subgrafo', [OrganigramaController::class, 'subgrafoAPI']);
+$router->get('/api/organigrama/parentesco', [OrganigramaController::class, 'parentescoAPI']);
 
 
 
